@@ -1,0 +1,49 @@
+// Backup of src/store/auth.js before revert
+import { defineStore } from 'pinia';
+import api from '../services/api';
+import axios from 'axios';
+
+export const useAuthStore = defineStore('auth', {
+    state: () => ({
+        user: JSON.parse(localStorage.getItem('user')) || null,
+        token: localStorage.getItem('token') || null,
+    }),
+    actions: {
+        async login(credentials) {
+            // use the api instance so baseURL and interceptors are applied
+            const res = await api.post('/auth/login', credentials);
+            this.token = res.data.token;
+            this.user = res.data.user;
+            localStorage.setItem('token', this.token);
+            localStorage.setItem('user', JSON.stringify(this.user));
+            // attach token to api instance and global axios too (for any direct axios calls)
+            api.defaults.headers.common['Authorization'] = `Bearer ${this.token}`;
+            axios.defaults.headers.common['Authorization'] = `Bearer ${this.token}`;
+        },
+        logout() {
+            this.token = null;
+            this.user = null;
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+        },
+        getMe() {
+            if (!this.token) return;
+            api.get('/auth/me')
+                .then(res => {
+                    this.user = res.data.user;
+                    localStorage.setItem('user', JSON.stringify(this.user));
+                })
+                .catch(() => {
+                    this.logout();
+                });
+        },
+        hasRole(roles) {
+            if (!this.user) return false;
+            return roles.includes(this.user.role);
+        },
+        hasPermission(permissions) {
+            if (!this.user) return false;
+            return permissions.every(p => this.user.permissions?.includes(p));
+        }
+    }
+});

@@ -276,7 +276,7 @@ onMounted(() => {
 }
 
 .hero {
-  background-image: url('newimage.jpg');
+  background-image: url('/newimage.jpeg');
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -332,7 +332,7 @@ onMounted(() => {
 
 .projects {
   padding: 0.1rem 1rem 2.5rem 1rem;
-  background: ring-blue-500;
+  background: #f3f4f6;
   position: relative;
   overflow: hidden;
 }
@@ -378,13 +378,15 @@ onMounted(() => {
 
 .projects-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 2.5rem;
   margin-bottom: 2rem;
   max-width: 1200px;
   margin: 2rem auto;
   position: relative;
   z-index: 1;
+  justify-content: center;
+  align-items: center;
 }
 
 .project-card {
@@ -1180,6 +1182,23 @@ onMounted(() => {
   .deco-3 {
     width: 100px;
     height: 100px;
+  }
+}
+
+@media (max-width: 480px) {
+  .projects-grid {
+    display: flex;
+    flex-direction: column;
+    /* single column */
+    align-items: center;
+    /* center grid items */
+  }
+
+  .project-card {
+    width: 100%;
+    /* shrink card width */
+    max-width: 320px;
+    /* prevent oversized cards */
   }
 }
 </style>

@@ -77,7 +77,7 @@ const handleSignup = async () => {
 
 <style scoped>
 .signup-page {
-    background-image: url('Banner3.png');
+    background-image: url('/Banner3.png');
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;

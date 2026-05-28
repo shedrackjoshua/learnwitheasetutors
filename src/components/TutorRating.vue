@@ -10,7 +10,7 @@
             <label for="comment">Comment</label>
             <textarea id="comment" v-model="comment"></textarea>
 
-            <button type="submit" :disabled="loading">{{ loading ? 'Submitting...' : 'Submit Ratings' }}</button>   
+            <button type="submit" :disabled="loading">{{ loading ? 'Submitting...' : 'Submit Ratings' }}</button>
         </form>
         <AverageStars v-if="averageRating !== null" :average="averageRating" />
     </div>
@@ -65,34 +65,40 @@ async function submitRating() {
     margin: auto;
     max-width: 400px;
     background: #f9f9f9;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
+
 .rating-form h3 {
     margin-top: 0;
     color: #1E3A8A;
 }
+
 .rating-form label {
     display: block;
     margin-top: 10px;
     font-weight: bold;
     color: #3B82F6;
 }
+
 .message {
     padding: 10px;
     margin-bottom: 15px;
     border-radius: 4px;
     font-weight: 500;
 }
+
 .message.success {
     background-color: #d4edda;
     color: #155724;
     border: 1px solid #c3e6cb;
 }
+
 .message.error {
     background-color: #f8d7da;
     color: #721c24;
     border: 1px solid #f5c6cb;
 }
+
 .rating-form textarea {
     width: 100%;
     height: 80px;
@@ -102,10 +108,12 @@ async function submitRating() {
     border-radius: 6px;
     transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
+
 .rating-form textarea:focus {
     border-color: #3B82F6;
-    box-shadow: 0 0 5px rgba(59,130,246,0.5);
+    box-shadow: 0 0 5px rgba(59, 130, 246, 0.5);
 }
+
 .rating-form button {
     margin-top: 15px;
     padding: 12px 20px;
@@ -116,27 +124,33 @@ async function submitRating() {
     cursor: pointer;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
+
 .rating-form button:hover:not(:disabled) {
     transform: translateY(-2px);
     box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
 }
+
 .rating-form button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
 }
+
 .star-rating span {
     font-size: 2rem;
     cursor: pointer;
     transition: color 0.2s ease, transform 0.2s ease;
 }
+
 .star-rating span:hover {
     color: #FBBF24;
     transform: scale(1.2);
 }
+
 @media (max-width: 500px) {
     .rating-form {
         padding: 15px;
     }
+
     .rating-form h3 {
         font-size: 1.5rem;
     }
@@ -147,5 +161,4 @@ async function submitRating() {
         padding: 12px;
     }
 }
-
 </style>

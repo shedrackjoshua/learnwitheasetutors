@@ -471,4 +471,21 @@ onMounted(() => {
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 40%, #3b82f6 100%);
     }
 }
+
+@media (max-width: 768px) {
+    .footer-section {
+        text-align: center;
+        align-items: center;
+        /* force all sections to center */
+    }
+
+    .footer-title::after {
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+    .links-list {
+        align-items: center;
+    }
+}
 </style>

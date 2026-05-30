@@ -32,6 +32,6 @@ export default defineConfig(({ command }) => {
   // Production config (GitHub Pages)
   return {
     ...common,
-    base: '/learnwitheasetutors/'
+    base: process.env.VERCEL ? '/learnwitheasetutors/' : '/'
   }
 });

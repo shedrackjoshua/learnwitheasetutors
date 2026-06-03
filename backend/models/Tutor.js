@@ -1,21 +1,56 @@
 import mongoose from 'mongoose';
 
 const tutorSchema = new mongoose.Schema({
-    name: String,
-    subject: String,
-    ratings: [
-        {
-            childId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-            score: { type: Number, min: 1, max: 5 },
-            comment: String,
-        },
-    ],
-});
-
-tutorSchema.virtual('averageRating').get(function () {
-    if (this.ratings.length === 0) return 0;
-    const sum = this.ratings.reduce((acc, r) => acc + r.score, 0);
-    return sum / this.ratings.length;
+    name: {
+        type: String,
+        required: true
+    },
+    email: {
+        type: String,
+        required: true
+    },
+    gender: {
+        type: String,
+        required: true
+    },
+    phone: {
+        type: String,
+        required: true
+    },
+    date_of_birth: {
+        type: String,
+        required: true
+    },
+    location: {
+        type: String,
+        required: true
+    },
+    subjects_taught: {
+        type: String,
+        required: true
+    },
+    years_of_experience: {
+        type: String,
+        required: true
+    },
+    highest_qualification: {
+        type: String,
+        required: true
+    },
+    government_issued_id: {
+        // This can be a URL or a file path to the uploaded ID
+        type: String,
+        required: true
+    },
+    academic_certificates: {
+        // This can be a URL or a file path to the uploaded certificate
+        type: String,
+        required: true
+    },
+    references: {
+        type: String,
+        required: true
+    }
 });
 
 export default mongoose.model('Tutor', tutorSchema);

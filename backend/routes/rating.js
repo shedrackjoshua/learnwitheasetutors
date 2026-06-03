@@ -1,5 +1,7 @@
 import express from 'express';
-import Tutor from '../models/Tutor.js';
+import Tutors from '../models/Tutors.js';
+// alias for historical references that use singular 'Tutor'
+const Tutor = Tutors;
 import { requireRole } from '../middleware/roleCheck.js';
 import { requireAuth } from '../middleware/auth.js';
 
@@ -14,7 +16,7 @@ router.use((req, res, next) => {
 // List all tutors
 router.get('/', async (req, res) => {
     try {
-        const tutors = await Tutor.find().select('-__v');
+        const tutors = await Tutors.find().select('-__v');
         res.json(tutors);
     } catch (err) {
         console.error('[tutors] GET / error', err && err.stack ? err.stack : err);
@@ -22,13 +24,14 @@ router.get('/', async (req, res) => {
     }
 });
 
-// Get single tutor
+// Get single tutors
 router.get('/:id', async (req, res) => {
     try {
-        const tutor = await Tutor.findById(req.params.id).select('-__v');
+        const tutor = await Tutors.findById(req.params.id).select('-__v');
         if (!tutor) return res.status(404).json({ message: 'Tutor not found' });
         res.json(tutor);
     } catch (err) {
+        console.error('[tutors] GET /:id error', err && err.stack ? err.stack : err);
         res.status(500).json({ message: 'Error fetching tutor', error: err.message });
     }
 });
@@ -38,7 +41,7 @@ router.post('/:id/rate', requireAuth, requireRole('child'), async (req, res) => 
     const { id } = req.params;
     const { score, comment } = req.body;
     try {
-        const tutor = await Tutor.findById(id);
+        const tutor = await Tutors.findById(id);
         if (!tutor) return res.status(404).json({ message: 'Tutor not found' });
 
         // prevent multiple ratings by the same child
@@ -54,6 +57,7 @@ router.post('/:id/rate', requireAuth, requireRole('child'), async (req, res) => 
         const avg = tutor.ratings.reduce((sum, r) => sum + r.score, 0) / tutor.ratings.length;
         res.json({ message: 'Ratings submitted', averageRating: avg });
     } catch (error) {
+        console.error('[tutors] POST /:id/rate error', error && error.stack ? error.stack : error);
         res.status(500).json({ message: 'Error submitting rating', error: error.message });
     }
 });

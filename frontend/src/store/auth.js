@@ -3,11 +3,28 @@ import api from '../services/api';
 import axios from 'axios';
 
 export const useAuthStore = defineStore('auth', {
-    state: () => ({
-        user: JSON.parse(localStorage.getItem('user')) || null,
-        token: localStorage.getItem('token') || null,
-        sessionId: localStorage.getItem('sessionId') || null,
-    }),
+    state: () => {
+        let parsedUser = null;
+        try {
+            const raw = localStorage.getItem('user');
+            if (raw && raw !== 'undefined') parsedUser = JSON.parse(raw);
+        } catch (e) {
+            // corrupted localStorage value — fall back to null
+            parsedUser = null;
+        }
+
+        const token = localStorage.getItem('token') || null;
+        // restore default auth header if token is present
+        if (token) {
+            api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        }
+
+        return {
+            user: parsedUser,
+            token,
+            sessionId: localStorage.getItem('sessionId') || null,
+        };
+    },
     actions: {
         async login(credentials) {
             // Use the shared api instance (has baseURL '/api' configured)

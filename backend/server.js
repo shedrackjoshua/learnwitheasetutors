@@ -39,7 +39,8 @@ const app = express();
 app.use(cors({
   origin: [
     "http://localhost:5173",
-    "https://learnwitheasetutors-frontend.onrender.com"
+    "https://learnwitheasetutors-frontend.onrender.com",
+    "https://learnwitheasetutors.onrender.com"
   ],
   credentials: true
 }));

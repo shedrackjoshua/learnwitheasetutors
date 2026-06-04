@@ -57,6 +57,8 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
 }));
 
+app.options("*", cors()); // Handle preflight requests for all routes
+
 
 /* -------------------------------------------------------
    EXPRESS JSON + UPLOADS

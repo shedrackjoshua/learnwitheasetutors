@@ -32,7 +32,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Load env
-dotenv.config({ path: join(__dirname, '.env') });
+dotenv.config();
 
 const app = express();
 
@@ -58,7 +58,7 @@ app.use(cors({
 }));
 
 // Preflight requests are handled by the CORS middleware above.
-app.options("*", cors());
+// Preflight OPTIONS requests are handled by the CORS middleware above.
 
 /* -------------------------------------------------------
    EXPRESS JSON + UPLOADS

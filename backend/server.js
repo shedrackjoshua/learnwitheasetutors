@@ -25,6 +25,7 @@ import Contact from './models/contact.js';
 import Tutor from './models/tutor.js';
 import Registration from './models/registration.js';
 import ChatMessage from './models/ChatMessage.js';
+import User from './models/User.js';
 
 // Setup __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -70,7 +71,7 @@ const uploadFields = upload.fields([
 ]);
 
 // Debug route
-app.get('/debug', (req, res) => {
+app.get('/', (req, res) => {
   res.json({ message: 'Server is running' });
 });
 
@@ -420,7 +421,7 @@ io.on('connection', (socket) => {
 
 
 // Connect to MongoDB and start server
-const PORT = process.env.PORT || 5000;
+const PORT  = process.env.PORT || 5000;
 
 // Accept multiple common env var names (legacy and different casings)
 const MONGO_URI = process.env.MongoDB_URI || process.env.MONGODB_URI || process.env.MONGO_URI || process.env.DB_URI || process.env.DATABASE_URL;

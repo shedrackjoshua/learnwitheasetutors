@@ -36,14 +36,29 @@ dotenv.config({ path: join(__dirname, '.env') });
 
 const app = express();
 
+// Simpler CORS: echo request origin to Access-Control-Allow-Origin and allow credentials.
+// This avoids preflight issues for deployed frontends when their origin varies.
+
 app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "https://learnwitheasetutors-frontend.onrender.com",
-    "https://learnwitheasetutors.onrender.com"
-  ],
-  credentials: true
+  origin: function (origin, callback) {
+    // Allow mobile apps, curl, Postman (no origin)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error("CORS blocked: " + origin));
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
 }));
+
+// Required for preflight success on Render
+app.options("*", cors());
+
+// Preflight requests are handled by the configured CORS middleware above.
 
 app.use(express.json());
 // Ensure uploads directory exists
@@ -82,6 +97,8 @@ app.use('/api/tutors', ratingRoutes);
 
 // Auth & Chat routes
 app.use('/auth', authRoutes);
+// Mount API-prefixed auth routes for frontend compatibility
+app.use('/api/auth', authRoutes);
 app.use('/api/chat', chatRoutes);
 
 // Contacts CRUD

@@ -81,7 +81,7 @@ app.use('/tutors', ratingRoutes);
 app.use('/api/tutors', ratingRoutes);
 
 // Auth & Chat routes
-app.use('/api/auth', authRoutes);
+app.use('/auth', authRoutes);
 app.use('/api/chat', chatRoutes);
 
 // Contacts CRUD

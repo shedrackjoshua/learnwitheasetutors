@@ -151,7 +151,7 @@ const roomId = route.params.sessionId;
 const userName = auth.user?.name || 'Unknown';
 const userRole = auth.user?.role || 'guest';
 
-const backendBase = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+const backendBase = import.meta.env.VITE_BACKEND_URL || '';
 
 const localVideo = ref(null);
 const remoteVideo = ref(null);
@@ -159,7 +159,7 @@ const canvas = ref(null);
 const messagesContainer = ref(null);
 const fileInput = ref(null);
 
-const socket = io(backendBase);
+// socket is initialized above (use backendBase when provided)
 
 let pc = null;
 let localStream = null;
@@ -364,7 +364,8 @@ async function handleFileSelect(e) {
   const formData = new FormData();
   formData.append('file', file);
 
-  const res = await axios.post(`${backendBase}/api/upload`, formData);
+  // use shared api instance so requests go through the Vite proxy in dev
+  const res = await api.post('/upload', formData);
 
   const msg = {
     id: generateId(),
@@ -510,7 +511,7 @@ onMounted(async () => {
 
     // Load chat history
     try {
-      const historyRes = await axios.get(`${backendBase}/api/chat/${roomId}`);
+      const historyRes = await api.get(`/chat/${roomId}`);
       messages.value = historyRes.data || [];
     } catch (err) {
       console.warn('Could not load chat history:', err);

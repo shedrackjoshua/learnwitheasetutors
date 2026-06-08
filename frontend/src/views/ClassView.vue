@@ -167,6 +167,7 @@ import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue';
 import { io } from 'socket.io-client';
 import { useRoute } from 'vue-router';
 import axios from 'axios';
+import api from '../services/api';
 import { useAuthStore } from '../store/auth';
 
 const route = useRoute();
@@ -176,7 +177,7 @@ const roomId = route.params.sessionId;
 const userName = auth.user?.name || 'Unknown';
 const userRole = auth.user?.role || 'guest';
 
-const backendBase = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+const backendBase = import.meta.env.VITE_BACKEND_URL || '';
 
 const localVideo = ref(null);
 const remoteVideo = ref(null);
@@ -184,7 +185,7 @@ const canvas = ref(null);
 const messagesContainer = ref(null);
 const fileInput = ref(null);
 
-const socket = io(backendBase);
+const socket = io(backendBase || undefined);
 
 let pc = null;
 let localStream = null;
@@ -344,7 +345,7 @@ async function handleFileSelect(e) {
   const formData = new FormData();
   formData.append('file', file);
 
-  const res = await axios.post(`${backendBase}/api/upload`, formData);
+  const res = await api.post('/upload', formData);
 
   const msg = {
     id: generateId(),
@@ -553,7 +554,7 @@ onMounted(async () => {
 
     // Load chat history
     try {
-      const historyRes = await axios.get(`${backendBase}/api/chat/${roomId}`);
+      const historyRes = await api.get(`/chat/${roomId}`);
       messages.value = historyRes.data || [];
     } catch (err) {
       console.warn('Could not load chat history:', err);

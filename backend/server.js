@@ -42,8 +42,8 @@ const app = express();
 
 const allowedOrigins = [
   "http://localhost:5173",
-  "https://learnwitheasetutors.onrender.com",
-  "https://learnwitheasetutors-frontend.onrender.com"
+  "https://learnwitheasetutors.com",
+  "https://learnwitheasetutors.vercel.app",
 ];
 
 app.use(cors({
@@ -65,6 +65,7 @@ app.use(cors({
 ------------------------------------------------------- */
 
 app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Ensure uploads directory exists
 const uploadsDir = join(__dirname, 'uploads');
@@ -187,8 +188,15 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
-    methods: ["GET", "POST"]
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("Socket.io CORS blocked: " + origin));
+    },
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 

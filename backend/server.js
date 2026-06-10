@@ -58,7 +58,6 @@ app.use(cors({
 }));
 
 // Preflight requests are handled by the CORS middleware above.
-app.use("*", cors());
 
 /* -------------------------------------------------------
    EXPRESS JSON + UPLOADS

@@ -48,7 +48,7 @@
                                 </div>
                                 <div>
                                     <input type="email" id="students_email" v-model="child.students_email" class="input"
-                                        placeholder="Child's Email" required>
+                                        placeholder="Child's Email (Optional)">
                                 </div>
                                 <div>
                                     <input type="text" id="students_grade_or_year"

@@ -1,5 +1,5 @@
 <template>
-    <main class="container">
+    <main class="login-wrapper">
         <h2>Login Page</h2>
         <!-- Login Form-->
         <section>
@@ -51,7 +51,7 @@ const handleLogin = async () => {
         } else if (role === 'tutor') {
             router.push('/tutor');
         } else if (role === 'parents') {
-            router.push('/parents');
+            router.push('/parentsdashboard');
         } else {
             router.push('/');
         }
@@ -141,5 +141,21 @@ h2 {
     background-color: #ffffff;
     padding: 20px;
     border-radius: 8px;
+}
+
+.login-wrapper {
+    min-height: 50vh;
+    width: 100%;
+    /* update path */
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-color: whitesmoke;
+    position: relative;
+    padding-top: 60px;
+
+    /* Mobile fixes */
+    -webkit-background-size: cover;
+    background-attachment: fixed;
 }
 </style>

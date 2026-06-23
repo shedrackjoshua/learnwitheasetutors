@@ -24,6 +24,7 @@ import ArtsView from '../views/ArtsView.vue';
 import ExamView from '../views/ExamView.vue';
 import CodingView from '../views/CodingView.vue';
 import HomeworkView from '../views/HomeworkView.vue';
+import ParentsDashBoard from '../views/ParentsDashBoard.vue';
 
 
 const routes = [
@@ -156,6 +157,12 @@ const routes = [
         path: '/homework',
         name: 'Homework',
         component: HomeworkView
+    },
+    {
+        path: '/parentsdashboard',
+        name: 'ParentsDashboard',
+        component: () => import('../views/ParentsDashBoard.vue'),
+        meta: { requiresAuth: true, roles: 'parents' }
     }
 ]
 

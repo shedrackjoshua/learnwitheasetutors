@@ -11,17 +11,22 @@
 
       <!-- VIDEO GRID -->
       <div class="videos" :class="{ minimized: minimizeVideo }">
+        <!-- Local video -->
         <div class="video-tile">
-          <div class="video-label">You</div>
+          <div class="video-label">
+            {{ userRole === 'tutor' ? 'Tutor' : userRole === 'child' ? 'Child' : 'You' }}
+          </div>
           <video ref="localVideo" autoplay playsinline muted></video>
         </div>
 
+        <!-- Remote video -->
         <div class="video-tile">
-          <div class="video-label">Tutor</div>
+          <div class="video-label">
+            {{ userRole === 'tutor' ? 'Child' : userRole === 'child' ? 'Tutor' : 'Other' }}
+          </div>
           <video ref="remoteVideo" autoplay playsinline></video>
         </div>
       </div>
-
       <!-- WHITEBOARD -->
       <div class="whiteboard-container">
         <div class="whiteboard-header">
@@ -99,7 +104,7 @@
       </div>
 
       <div class="messages" ref="messagesContainer">
-        <div v-for="msg in messages" :key="msg.id" class="message" :class="{ me: msg.sender === userName }">
+        <div v-for="msg in messages" :key="msg.id || msg._id" class="message" :class="{ me: msg.sender === userName }">
           <div class="message-content">
             <div class="message-text">
               <span class="sender">{{ msg.sender }}:</span>
@@ -107,7 +112,7 @@
               <span v-if="msg.type === 'text'">{{ msg.text }}</span>
 
               <span v-else-if="msg.type === 'file'">
-                <a :href="backendBase + msg.file.url" target="_blank">
+                <a :href="msg.file.url" target="_blank" rel="noopener noreferrer">
                   {{ msg.file.name }}
                 </a>
               </span>
@@ -147,17 +152,22 @@ import { useAuthStore } from '../store/auth';
 const route = useRoute();
 const auth = useAuthStore();
 
-const roomId = route.params.sessionId;
-const userName = auth.user?.name || 'Unknown';
-const userRole = auth.user?.role || 'guest';
+const backendBase = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+// ✅ single definition, fallback to localhost if env is missing
+// Ensure API calls include the /api prefix so endpoints like /chat resolve to /api/chat
+const api = axios.create({ baseURL: backendBase.replace(/\/$/, '') + '/api' }); // ✅ define api
+const socket = io(backendBase); // ✅ define socket
 
-const backendBase = import.meta.env.VITE_BACKEND_URL || '';
+const roomId = route.params.sessionId;
+
 
 const localVideo = ref(null);
 const remoteVideo = ref(null);
 const canvas = ref(null);
 const messagesContainer = ref(null);
 const fileInput = ref(null);
+const userName = ref('');
+const userRole = ref('');
 
 // socket is initialized above (use backendBase when provided)
 
@@ -317,7 +327,7 @@ function sendMessage() {
   const msg = {
     id: generateId(),
     roomId,
-    sender: userName,
+    sender: auth.user?.name || userName.value,
     type: 'text',
     text: chatMessage.value,
     timestamp: Date.now(),
@@ -332,11 +342,11 @@ function sendMessage() {
 }
 
 function handleTyping() {
-  socket.emit('typing', { roomId, userName, isTyping: !!chatMessage.value });
+  socket.emit('typing', { roomId, userName: userName.value, isTyping: !!chatMessage.value });
 
   clearTimeout(typingTimeout);
   typingTimeout = setTimeout(() => {
-    socket.emit('typing', { roomId, userName, isTyping: false });
+    socket.emit('typing', { roomId, userName: userName.value, isTyping: false });
   }, 1500);
 }
 
@@ -346,7 +356,7 @@ function triggerFileInput() {
 
 function emitReadForAll() {
   const unread = messages.value
-    .filter((m) => m.sender !== userName && !m.read)
+    .filter((m) => m.sender !== userName.value && !m.read)
     .map((m) => m.id);
 
   if (unread.length) {
@@ -367,12 +377,20 @@ async function handleFileSelect(e) {
   // use shared api instance so requests go through the Vite proxy in dev
   const res = await api.post('/upload', formData);
 
+  // normalize URL returned from backend so it's absolute when needed
+  function toAbsolute(u) {
+    if (!u) return u;
+    if (u.startsWith('http')) return u;
+    // backendBase may or may not have trailing slash
+    return backendBase.replace(/\/$/, '') + (u.startsWith('/') ? u : '/' + u);
+  }
+
   const msg = {
     id: generateId(),
     roomId,
-    sender: userName,
+    sender: auth.user?.name || userName.value,
     type: 'file',
-    file: { url: res.data.url, name: res.data.name },
+    file: { url: toAbsolute(res.data.url), name: res.data.name },
     timestamp: Date.now(),
     read: false
   };
@@ -383,6 +401,16 @@ async function handleFileSelect(e) {
   emitReadForAll();
   e.target.value = '';
 }
+
+const joinRoom = () => {
+  if (!auth.user?.name) return; // guard
+
+  socket.emit('join-room', {
+    roomId,
+    userName: auth.user.name,
+    role: auth.user.role
+  });
+};
 
 // Whiteboard
 function resizeCanvas() {
@@ -485,6 +513,29 @@ watch(messages, async () => {
   messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
 });
 
+watch(
+  () => auth.user,
+  async (val) => {
+    if (val) {
+      userName.value = val.name;
+      userRole.value = val.role;
+
+      joinRoom();
+
+      // Start camera AFTER role is known
+      if (['tutor', 'child'].includes(userRole.value)) {
+        try {
+          localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          localVideo.value.srcObject = localStream;
+        } catch (err) {
+          console.warn('Camera/mic access denied:', err);
+        }
+      }
+    }
+  },
+  { immediate: true }
+);
+
 // Lifecycle
 onMounted(async () => {
   try {
@@ -512,13 +563,22 @@ onMounted(async () => {
     // Load chat history
     try {
       const historyRes = await api.get(`/chat/${roomId}`);
-      messages.value = historyRes.data || [];
+      // normalize file URLs in history
+      const history = historyRes.data || [];
+      const toAbsolute = (u) => {
+        if (!u) return u;
+        if (u.startsWith('http')) return u;
+        return backendBase.replace(/\/$/, '') + (u.startsWith('/') ? u : '/' + u);
+      };
+      messages.value = history.map((m) => {
+        if (m?.type === 'file' && m.file?.url) {
+          m.file.url = toAbsolute(m.file.url);
+        }
+        return m;
+      });
     } catch (err) {
       console.warn('Could not load chat history:', err);
     }
-
-    // Join room
-    socket.emit('join-room', { roomId, userName });
 
     // WebRTC signaling
     socket.on('offer', async ({ offer }) => {
@@ -549,7 +609,7 @@ onMounted(async () => {
 
     socket.on('message-read', ({ messageIds }) => {
       messages.value.forEach((m) => {
-        if (messageIds.includes(m.id) && m.sender === userName) m.read = true;
+        if (messageIds.includes(m.id) && m.sender === userName.value) m.read = true;
       });
     });
 
@@ -559,6 +619,17 @@ onMounted(async () => {
 
     // File sharing
     socket.on('file-shared', ({ file }) => {
+      // ensure file URLs are absolute
+      const toAbsolute = (u) => {
+        if (!u) return u;
+        if (u.startsWith('http')) return u;
+        return backendBase.replace(/\/$/, '') + (u.startsWith('/') ? u : '/' + u);
+      };
+
+      if (file?.type === 'file' && file.file?.url) {
+        file.file.url = toAbsolute(file.file.url);
+      }
+
       messages.value.push(file);
       emitReadForAll();
     });
@@ -569,7 +640,7 @@ onMounted(async () => {
     });
 
     // Auto-start call for tutor/child
-    if (['tutor', 'child'].includes(userRole)) startCall();
+    if (['tutor', 'child'].includes(userRole.value)) startCall();
   } catch (err) {
     console.error('Error mounting classroom:', err);
   }

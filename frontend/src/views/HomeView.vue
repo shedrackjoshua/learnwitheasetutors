@@ -214,13 +214,16 @@
 import { RouterLink } from 'vue-router'
 import { onMounted } from 'vue';
 
-document.addEventListener("scroll", () => {
+// Move scroll listener into onMounted and guard against missing elements
+// to prevent getBoundingClientRect errors during SSR or early script execution.
+function onScrollCheck() {
   const skillsGrid = document.querySelector(".skills-grid");
+  if (!skillsGrid) return;
   const rect = skillsGrid.getBoundingClientRect();
   if (rect.top < window.innerHeight - 100) {
     skillsGrid.classList.add("visible");
   }
-});
+}
 
 
 onMounted(() => {
@@ -267,6 +270,11 @@ onMounted(() => {
 
   // Observe all cards and stats
   [...projectCards, ...testimonialCards, ...statBoxes].forEach(el => observer.observe(el));
+  // Safe attach scroll listener
+  window.addEventListener('scroll', onScrollCheck);
+  // Initial check in case element already in view
+  onScrollCheck();
+  // optional: remove listener on unmount if component lifecycle used
 });
 </script>
 
@@ -328,6 +336,8 @@ onMounted(() => {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 1rem;
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .projects {
@@ -1187,18 +1197,35 @@ onMounted(() => {
 
 @media (max-width: 480px) {
   .projects-grid {
-    display: flex;
-    flex-direction: column;
-    /* single column */
-    align-items: center;
-    /* center grid items */
+    grid-template-columns: 1fr;
+    justify-items: center;
+    /* centers the cards */
+    gap: 1.8rem;
+    padding: 0 0.5rem;
   }
 
   .project-card {
-    width: 100%;
-    /* shrink card width */
     max-width: 320px;
-    /* prevent oversized cards */
+    /* prevents full-width stretching */
+    width: 100%;
+    padding: 1.2rem;
+  }
+
+  .project-card p {
+    font-size: 0.9rem;
+  }
+
+  .projects h2 {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .project-image img {
+    width: 4rem;
+  }
+
+  .projects {
+    padding: 1rem 1rem 2rem 1rem;
   }
 }
 </style>

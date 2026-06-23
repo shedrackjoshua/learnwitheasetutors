@@ -350,6 +350,7 @@ const submitForm = async () => {
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     width: 100%;
     max-width: 600px;
+    overflow-y: visible;
 }
 
 .registration-details {
@@ -439,9 +440,23 @@ const submitForm = async () => {
 
 .mt-4 {
     margin-top: 1rem;
+    color: #1E3A8A;
 }
 
 .mt-6 {
     margin-top: 1.5rem;
+}
+
+@media (min-width: 768px) {
+    .registration-container {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .registration-section {
+        padding: 150px;
+    }
 }
 </style>

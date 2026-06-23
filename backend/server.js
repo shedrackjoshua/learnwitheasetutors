@@ -9,6 +9,7 @@ import multer from 'multer';
 import http from 'http';
 import { Server } from 'socket.io';
 import fs from 'fs';
+import crypto from 'crypto';
 
 // Middleware & Utils
 import { ensureAdminUser } from './utils/seedAdmin.js';
@@ -237,16 +238,31 @@ app.get('/api/registrations', async (req, res) => {
   }
 });
 
+
+// POST /api/registrations
 app.post('/api/registrations', async (req, res) => {
   try {
-    const registration = new Registration(req.body);
+    const referralCode = crypto.randomBytes(4).toString('hex');
+
+    const registration = new Registration({
+      ...req.body,
+      referralCode,
+      referralCount: 0,
+      referredBy: req.body.referredBy || null
+    });
+
     const newRegistration = await registration.save();
-    res.status(201).json(newRegistration);
+
+    const referralLink = `http://www.learnwitheasetutors.com/register?ref=${referralCode}`;
+
+    res.status(201).json({
+      ...newRegistration.toObject(),
+      referralLink
+    });
   } catch (err) {
     res.status(400).json({ message: err.message });
   }
 });
-
 app.put('/api/registrations/:id', async (req, res) => {
   try {
     const registration = await Registration.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });

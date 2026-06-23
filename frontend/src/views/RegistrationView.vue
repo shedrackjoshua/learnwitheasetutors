@@ -185,13 +185,22 @@
                     </div>
                 </div>
             </form>
+            <div v-if="referralLink" class="mt-6">
+                <h2 class="text-xl font-semibold mb-4">Your Referral Link</h2>
+                <p>Share this link with others to refer them:</p>
+                <input type="text" :value="referralLink" readonly class="input mt-2 w-full">
+            </div>
         </section>
     </div>
 </template>
 <script setup>
 import { ref } from 'vue';
 import api from '../services/api';
+import { useRoute } from 'vue-router';
+import { onMounted } from 'vue';
 
+const route = useRoute();
+const referralLink = ref('');
 const step = ref(1);
 
 const form = ref({
@@ -219,6 +228,12 @@ const child = ref({
 const isSubmitting = ref(false);
 const submitMessage = ref('');
 const submitError = ref('');
+
+onMounted(() => {
+    if (route.query.ref) {
+        form.value.referredBy = route.query.ref;
+    }
+});
 
 const isChildEmpty = (c = child.value) => {
     return Object.values(c).every(v => v === '' || v == null);
@@ -276,7 +291,10 @@ const submitForm = async () => {
     }
 
     try {
-        await api.post('/registrations', form.value);
+        const response = await api.post('/registrations', form.value);
+
+        //capture referral link from backend response
+        referralLink.value = response.data.referralLink;
 
         submitMessage.value = 'Your registration was successful!';
 

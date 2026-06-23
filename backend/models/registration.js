@@ -67,7 +67,13 @@ const registrationSchema = new mongoose.Schema({
     register_another_child: {
         type: Boolean,
         required: false
-    }
-});
+    },
+    // Referral system fields
+    referralCode: { type: String, unique: true, index: true },
+    referredBy: { type: String, default: null },
+    referralCount: { type: Number, default: 0 }
+  },
+  { timestamps: true }
+);
 
 export default mongoose.model('Registration', registrationSchema)

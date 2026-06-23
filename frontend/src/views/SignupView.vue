@@ -19,7 +19,8 @@
                             <input type="password" v-model="password" placeholder="Password" required>
                         </div>
                         <div class="form-group">
-                            <select id="role" v-model="role">
+                            <select id="role" v-model="role" required>
+                                <option value="" disabled>Select Role</option>
                                 <option value="tutor">Tutor</option>
                                 <option value="parents">Parent</option>
                                 <option value="child">Child</option>
@@ -113,6 +114,7 @@ const handleSignup = async () => {
     padding: 10px;
     border: 1px solid #ccc;
     border-radius: 4px;
+    box-sizing: border-box;
 }
 
 .message {
@@ -153,5 +155,16 @@ const handleSignup = async () => {
     padding: 20px;
     border-radius: 8px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+h2 {
+    text-align: center;
+    color: #1e3a8a;
+    font-weight: 600;
+    font-size: 1.8rem;
+    letter-spacing: -0.5px;
+    margin-bottom: 1rem;
+    margin-top: 2rem;
+    text-transform: capitalize;
 }
 </style>

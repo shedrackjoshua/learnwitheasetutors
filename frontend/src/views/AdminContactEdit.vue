@@ -9,20 +9,19 @@
             <div v-else-if="error" class="error">{{ error }}</div>
             <form v-else @submit.prevent="updateContact" class="edit-form">
                 <div class="form-group">
-                    <input type="text" id="full_name" v-model="form.full_name" placeholder="Enter Full Name">
+                    <input type="text" v-model="form.full_name" placeholder="Enter Full Name">
                 </div>
                 <div class="form-group">
-                    <input type="text" id="email" v-model="form.email" placeholder="Enter Email">
+                    <input type="text" v-model="form.email" placeholder="Enter Email">
                 </div>
                 <div class="form-group">
-                    <input type="text" id="programme" v-model="form.programme" placeholder="Enter Programme">
+                    <input type="text" v-model="form.programme" placeholder="Enter Programme">
                 </div>
                 <div class="form-group">
-                    <input type="tel" id="phone" v-model="form.phone" placeholder="Enter Phone Number">
+                    <input type="tel" v-model="form.phone" placeholder="Enter Phone Number">
                 </div>
                 <div class="form-group">
-                    <textarea name="message" id="message" v-model="form.message" rows="6"
-                        placeholder="Enter Message"></textarea>
+                    <textarea v-model="form.message" rows="6" placeholder="Enter Message"></textarea>
                 </div>
                 <div class="form-action">
                     <button type="button" @click="goBack" class="btn-cancel">Cancel</button>
@@ -30,12 +29,11 @@
                         {{ isSubmitting ? 'Updating...' : 'Update Contact' }}
                     </button>
                 </div>
-                <div v-if="submitMessage" class="success-message">{{ submitMessage }}</div>
-                <div v-if="submitError" class="error-message">{{ submitError }}</div>
             </form>
         </div>
     </main>
 </template>
+
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -47,8 +45,6 @@ const router = useRouter();
 const loading = ref(false);
 const error = ref('');
 const isSubmitting = ref(false);
-const submitMessage = ref('');
-const submitError = ref('');
 
 const form = ref({
     full_name: '',
@@ -58,16 +54,6 @@ const form = ref({
     message: ''
 });
 
-// Optional: Fetch all users (clean + controlled)
-const fetchUsers = async () => {
-    try {
-        const response = await api.get('/users');
-        console.log('Users:', response.data);
-    } catch (err) {
-        console.error('Error fetching users:', err);
-    }
-};
-
 const fetchContact = async () => {
     loading.value = true;
     error.value = '';
@@ -76,9 +62,8 @@ const fetchContact = async () => {
         const contactID = route.params.id;
         const response = await api.get(`/contacts/${contactID}`);
         form.value = response.data || {};
-    } catch (err) {
-        console.error('Error fetching contact details:', err);
-        error.value = 'Failed to load contact details, try again later.';
+    } catch {
+        error.value = 'Failed to load contact details.';
     } finally {
         loading.value = false;
     }
@@ -86,21 +71,13 @@ const fetchContact = async () => {
 
 const updateContact = async () => {
     isSubmitting.value = true;
-    submitMessage.value = '';
-    submitError.value = '';
 
     try {
         const contactID = route.params.id;
         await api.put(`/contacts/${contactID}`, form.value);
-
-        submitMessage.value = 'Contact updated successfully!';
-
-        setTimeout(() => {
-            router.push(`/admin/contact/${contactID}/details`);
-        }, 3000);
-    } catch (err) {
-        console.error('Error updating contact:', err);
-        submitError.value = 'Failed to update contact, try again later.';
+        router.push(`/admin/contact/${contactID}/details`);
+    } catch {
+        error.value = 'Failed to update contact.';
     } finally {
         isSubmitting.value = false;
     }
@@ -112,7 +89,6 @@ const goBack = () => {
 
 onMounted(() => {
     fetchContact();
-    fetchUsers(); // optional, clean, intentional
 });
 </script>
 
@@ -194,16 +170,6 @@ onMounted(() => {
 
 .btn-submit:hover {
     background-color: #2563eb;
-}
-
-.success-message {
-    color: #28a745;
-    margin-top: 1rem;
-}
-
-.error-message {
-    color: #dc3545;
-    margin-top: 1rem;
 }
 
 .container {

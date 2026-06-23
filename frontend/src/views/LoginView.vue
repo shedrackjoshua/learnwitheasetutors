@@ -75,28 +75,58 @@ const handleLogout = () => {
 </script>
 
 <style scoped>
+h2 {
+    text-align: center;
+    color: #1e3a8a;
+    font-weight: 600;
+    font-size: 1.8rem;
+    letter-spacing: -0.5px;
+    margin-bottom: 1rem;
+    margin-top: 2rem;
+    text-transform: capitalize;
+}
+
 .login-form {
     display: flex;
     flex-direction: column;
     max-width: 300px;
-    margin: 0 auto;
+    margin: 20px auto;
 }
 
 .login-form input {
-    margin-bottom: 10px;
+    margin-bottom: 5px;
     padding: 8px;
     font-size: 16px;
+    color: #1e3a8a;
+    background-color: #f8faff;
+    border-bottom: 2px solid #1e3a8a;
+    outline: none;
+    border-radius: 6px;
+}
+
+.login-form input:focus {
+    border-bottom-color: #2563eb;
 }
 
 .btn-loading {
-    padding: 10px;
+    padding: 0.7rem;
     font-size: 16px;
     cursor: pointer;
+    text-decoration: underline;
+    border: 2px solid #1e3a8a;
+    background: #007bff;
+    margin-bottom: 1.5rem;
+}
+
+.btn-loading:hover {
+    background-color: #ccc;
+    color: #1a0303;
 }
 
 .profile-layout {
     display: flex;
     gap: 20px;
+    height: 100vh;
 }
 
 .side-bar {
@@ -108,7 +138,7 @@ const handleLogout = () => {
 
 .main-content {
     flex: 1;
-    background-color: #f9f9f9;
+    background-color: #ffffff;
     padding: 20px;
     border-radius: 8px;
 }

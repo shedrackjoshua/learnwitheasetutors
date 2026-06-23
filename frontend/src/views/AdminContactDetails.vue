@@ -32,6 +32,7 @@
         </div>
     </main>
 </template>
+
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -43,16 +44,6 @@ const router = useRouter();
 const contact = ref(null);
 const error = ref('');
 const loading = ref(false);
-
-// Optional: Fetch all contacts (clean version)
-const fetchAllContacts = async () => {
-    try {
-        const response = await api.get('/contacts');
-        console.log('All contacts:', response.data);
-    } catch (err) {
-        console.error('Error fetching contacts:', err);
-    }
-};
 
 const fetchContact = async () => {
     loading.value = true;
@@ -76,7 +67,6 @@ const goBack = () => {
 
 onMounted(() => {
     fetchContact();
-    fetchAllContacts(); // optional, clean, controlled
 });
 </script>
 

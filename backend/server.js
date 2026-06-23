@@ -124,6 +124,42 @@ app.post('/api/contacts', async (req, res) => {
   }
 });
 
+// Get single contact by ID
+app.get('/api/contacts/:id', async (req, res) => {
+  try {
+    const contact = await Contact.findById(req.params.id);
+    if (!contact) {
+      return res.status(404).json({ message: 'Contact not found' });
+    }
+    res.json(contact);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+app.put('/api/contacts/:id', async (req, res) => {
+    try {
+        const contact = await Contact.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+        if (!contact) {
+            return res.status(404).json({ message: 'Contact not found' });
+        }
+        res.json(contact);
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
+app.delete('/api/contacts/:id', async (req, res) => {
+    try {
+        const contact = await Contact.findByIdAndDelete(req.params.id);
+        if (!contact) {
+            return res.status(404).json({ message: 'Contact not found' });
+        }
+        res.json({ message: 'Contact deleted successfully' });
+    } catch (err) {
+        res.status(500).json({ message: err.message });
+    }
+});
+
 // Tutors CRUD
 app.post('/api/tutors', uploadFields, async (req, res) => {
   try {
@@ -138,6 +174,58 @@ app.post('/api/tutors', uploadFields, async (req, res) => {
     res.status(400).json({ message: err.message });
   }
 });
+
+app.get('/api/tutors', async (req, res) => {
+  try {
+    const tutors = await Tutor.find({});
+    res.json(tutors);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/tutors/:id', async (req, res) => {
+  try {
+    const tutor = await Tutor.findById(req.params.id);
+    if (!tutor) {
+      return res.status(404).json({ message: 'Tutor not found' });
+    }
+    res.json(tutor);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.put('/api/tutors/:id', uploadFields, async (req, res) => {
+  try {
+    const updateData = {
+      ...req.body,
+      government_issued_id: req.files['government_issued_id'] ? req.files['government_issued_id'][0].path : undefined,
+      academic_certificates: req.files['academic_certificates'] ? req.files['academic_certificates'][0].path : undefined
+    };
+    const tutor = await Tutor.findByIdAndUpdate(req.params.id, updateData, { new: true, runValidators: true });
+    if (!tutor) {
+      return res.status(404).json({ message: 'Tutor not found' });
+    }
+    res.json(tutor);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/tutors/:id', async (req, res) => {
+  try {
+    const tutor = await Tutor.findByIdAndDelete(req.params.id);
+    if (!tutor) {
+      return res.status(404).json({ message: 'Tutor not found' });
+    }
+    res.json({ message: 'Tutor deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+
 
 // Registrations CRUD
 app.get('/api/registrations', async (req, res) => {
@@ -159,10 +247,47 @@ app.post('/api/registrations', async (req, res) => {
   }
 });
 
+app.put('/api/registrations/:id', async (req, res) => {
+  try {
+    const registration = await Registration.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    if (!registration) {
+      return res.status(404).json({ message: 'Registration not found' });
+    }
+    res.json(registration);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.get('/api/registrations/:id', async (req, res) => {
+  try {
+    const registration = await Registration.findById(req.params.id);
+    if (!registration) {
+      return res.status(404).json({ message: 'Registration not found' });
+    }
+    res.json(registration);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+app.delete('/api/registrations/:id', async (req, res) => {
+  try {
+    const registration = await Registration.findByIdAndDelete(req.params.id);
+    if (!registration) {
+      return res.status(404).json({ message: 'Cannot delete regisration' });
+    }
+    res.json({ message: 'Registration deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Upload route
 app.post('/api/upload', upload.single('file'), (req, res) => {
   const fileURL = `/uploads/${req.file.filename}`;
-  res.json({ url: fileURL, filename: req.file.originalname });
+  // return 'name' to match frontend expectation (res.data.name)
+  res.json({ url: fileURL, name: req.file.originalname });
 });
 
 // Users (admin)

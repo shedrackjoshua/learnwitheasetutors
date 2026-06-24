@@ -61,6 +61,7 @@ onMounted(() => {
     /* blue-800 */
     margin-bottom: 1.5rem;
     text-align: center;
+    margin-top: 1.5rem;
 }
 
 /* Info Cards */
@@ -84,6 +85,13 @@ onMounted(() => {
     font-weight: 600;
     color: #1E3A8A;
     margin-bottom: 1rem;
+}
+
+.info-card p {
+    font-size: 1rem;
+    color: #19212e;
+    /* gray-700 */
+    margin: 0.4rem 0;
 }
 
 /* Child Cards */

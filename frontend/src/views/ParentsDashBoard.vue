@@ -51,6 +51,7 @@ onMounted(() => {
     /* light gray background */
     min-height: 100vh;
     /* ensures background shows on mobile */
+    padding-top: 5rem;
 }
 
 /* Headline */
@@ -61,7 +62,6 @@ onMounted(() => {
     /* blue-800 */
     margin-bottom: 1.5rem;
     text-align: center;
-    margin-top: 1.5rem;
 }
 
 /* Info Cards */

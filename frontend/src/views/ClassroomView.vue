@@ -1,16 +1,16 @@
 <template>
-  <div class="classroom" :class="{ 'minimize-video': minimizeVideo }">
+  <div class="classroom" :class="{ 'minimize-video': videosMinimized }">
     <!-- LEFT SIDE -->
-    <div class="left-pane" :style="{ flex: minimizeVideo ? '1' : '2' }">
+    <div class="left-pane" :style="{ flex: chatMinimized ? '3' : (videosMinimized ? '3' : '2') }">
       <div class="header-section">
         <h2>Live Classroom</h2>
-        <button class="minimize-btn" @click="minimizeVideo" :title="minimizeVideo ? 'Maximize' : 'Minimize'">
-          {{ minimizeVideo ? '📺' : '➖' }}
+        <button class="minimize-btn" @click="toggleVideos" :title="videosMinimized ? 'Maximize' : 'Minimize'">
+          {{ videosMinimized ? '📺' : '➖' }}
         </button>
       </div>
 
       <!-- VIDEO GRID -->
-      <div class="videos" :class="{ minimized: minimizeVideo }">
+      <div v-show="!videosMinimized" class="videos" :class="{ minimized: videosMinimized }">
         <!-- Local video -->
         <div class="video-tile">
           <div class="video-label">
@@ -28,7 +28,7 @@
         </div>
       </div>
       <!-- WHITEBOARD -->
-      <div class="whiteboard-container">
+      <div class="whiteboard-container" :class="{ minimized: whiteboardMinimized }">
         <div class="whiteboard-header">
           <h3>Whiteboard</h3>
 
@@ -42,11 +42,12 @@
             <button @click="activatePen">Pen</button>
             <button @click="activateEraser">Eraser</button>
             <button @click="clearWhiteboard">Clear</button>
+            <button class="small" @click="toggleWhiteboard">{{ whiteboardMinimized ? 'Restore' : 'Minimize' }}</button>
           </div>
         </div>
 
-        <canvas ref="canvas" class="whiteboard" @mousedown="startDrawing" @mousemove="draw" @mouseup="stopDrawing"
-          @mouseleave="stopDrawing"></canvas>
+        <canvas v-show="!whiteboardMinimized" ref="canvas" class="whiteboard" @mousedown="startDrawing"
+          @mousemove="draw" @mouseup="stopDrawing" @mouseleave="stopDrawing"></canvas>
       </div>
 
       <!-- RAISE HAND BADGE -->
@@ -94,13 +95,14 @@
     </div>
 
     <!-- RIGHT SIDE: CHAT -->
-    <div class="right-pane" :class="{ minimized: minimizeVideo }">
+    <div class="right-pane" :class="{ minimized: chatMinimized }">
       <div class="chat-header">
         <h3>Chat</h3>
         <div class="typing-indicator" v-if="typingText">
           {{ typingText }}
         </div>
-        <button class="close-btn" @click="minimizeVideo" v-if="minimizeVideo" title="Close">✕</button>
+        <button class="close-btn" @click="toggleChat" v-if="!chatMinimized" title="Minimize chat">—</button>
+        <button class="close-btn" @click="toggleChat" v-else title="Restore chat">▢</button>
       </div>
 
       <div class="messages" ref="messagesContainer">
@@ -137,8 +139,15 @@
         <input type="file" @change="handleFileSelect" class="file-input" ref="fileInput" />
         <button @click="triggerFileInput" class="file-input-label" title="Attach file">📎</button>
 
-        <button @click="sendMessage" class="send-btn">Send</button>
+        <button type="button" @click="sendMessage" class="send-btn">Send</button>
       </div>
+    </div>
+
+    <!-- Minimized Tabs (visible when a panel is minimized) -->
+    <div class="minimized-tabs">
+      <button v-if="chatMinimized" class="minimized-tab" @click="toggleChat">Chat</button>
+      <button v-if="videosMinimized" class="minimized-tab" @click="toggleVideos">Videos</button>
+      <button v-if="whiteboardMinimized" class="minimized-tab" @click="toggleWhiteboard">Whiteboard</button>
     </div>
   </div>
 </template>
@@ -199,7 +208,25 @@ const cameraOn = ref(true);
 const micOn = ref(true);
 const volumeOn = ref(true);
 const handRaised = ref(false);
-const minimizeVideo = ref(false);
+// independent panel minimize states
+const videosMinimized = ref(false);
+const chatMinimized = ref(false);
+const whiteboardMinimized = ref(false);
+
+function toggleVideos() {
+  videosMinimized.value = !videosMinimized.value;
+  console.debug('toggleVideos ->', videosMinimized.value);
+}
+
+function toggleChat() {
+  chatMinimized.value = !chatMinimized.value;
+  console.debug('toggleChat ->', chatMinimized.value);
+}
+
+function toggleWhiteboard() {
+  whiteboardMinimized.value = !whiteboardMinimized.value;
+  console.debug('toggleWhiteboard ->', whiteboardMinimized.value);
+}
 
 
 
@@ -322,6 +349,7 @@ function toggleRecording() {
 
 // Chat
 function sendMessage() {
+  console.debug('sendMessage called, chatMessage=', chatMessage.value);
   if (!chatMessage.value.trim()) return;
 
   const msg = {
@@ -710,6 +738,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 40;
+  pointer-events: auto;
 }
 
 .minimize-btn:hover {
@@ -888,6 +918,39 @@ video {
   box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
+.whiteboard-container.minimized {
+  display: none;
+}
+
+/* Minimized tab bar */
+.minimized-tabs {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 60;
+}
+
+.minimized-tab {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+  border: none;
+  padding: 0.6rem 0.9rem;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(118, 75, 162, 0.25);
+  font-weight: 700;
+  pointer-events: auto;
+}
+
+.small {
+  padding: 0.35rem 0.6rem;
+  font-size: 0.85rem;
+  margin-left: 0.4rem;
+}
+
 /* RAISE HAND BADGE */
 .hand-badge {
   position: absolute;
@@ -1024,6 +1087,8 @@ video {
   cursor: pointer;
   transition: all 0.3s ease;
   padding: 0.25rem 0.5rem;
+  z-index: 40;
+  pointer-events: auto;
 }
 
 .close-btn:hover {

@@ -20,6 +20,7 @@ import { requireAuth } from './middleware/auth.js';
 import authRoutes from './routes/auth.js';
 import ratingRoutes from './routes/rating.js';
 import chatRoutes from './routes/chat.js';
+import assignmentRoutes from './routes/assignment.js';
 
 // Models
 import Contact from './models/contact.js';
@@ -104,6 +105,7 @@ app.use('/api/tutors', ratingRoutes);
 // Auth & Chat routes
 app.use('/api/auth', authRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/assignments', assignmentRoutes);
 
 // Contacts CRUD
 app.get('/api/contacts', async (req, res) => {
@@ -363,13 +365,18 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('ice-candidate', { candidate, from: socket.id });
   });
 
-  socket.on('chat-message', async ({ roomId, message }) => {
-    try {
-      await ChatMessage.create(message);
-    } catch (e) {
-      console.error('Error saving chat message:', e);
+  socket.on('file-shared', ({ roomId, message }) => {
+    if (!message.sender) {
+      console.warn("File message missing sender, rejecting:", message);
+      return;
     }
-    socket.to(roomId).emit('chat-message', message);
+    try {
+      // Optional: save file message to DB if you want persistence
+      // await ChatMessage.create(message);
+    } catch (e) {
+      console.error('Error saving file message:', e);
+    }
+    socket.to(roomId).emit('file-shared', message);
   });
 
   socket.on('typing', ({ roomId, userName, isTyping }) => {

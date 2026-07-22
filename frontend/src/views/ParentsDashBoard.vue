@@ -1,6 +1,6 @@
 <template>
     <main class="parent-dashboard">
-        <h2>Welcome, {{ parent.parents_name }}</h2>
+        <h2>Welcome {{ parent.parents_name }}</h2>
 
         <section class="info-card">
             <h3>Your Information</h3>

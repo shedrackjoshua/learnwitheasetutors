@@ -161,11 +161,14 @@ import { useAuthStore } from '../store/auth';
 const route = useRoute();
 const auth = useAuthStore();
 
-const backendBase = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+const backendBase = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 // ✅ single definition, fallback to localhost if env is missing
 // Ensure API calls include the /api prefix so endpoints like /chat resolve to /api/chat
-const api = axios.create({ baseURL: backendBase.replace(/\/$/, '') + '/api' }); // ✅ define api
-const socket = io(backendBase); // ✅ define socket
+const api = axios.create({ baseURL: backendBase.replace(/\/$/, '') }); // ✅ define api
+const socket = io(backendBase.replace(/\/api$/, ''), {
+  transports: ["websocket"],
+  withCredentials: true
+});
 
 const roomId = route.params.sessionId;
 

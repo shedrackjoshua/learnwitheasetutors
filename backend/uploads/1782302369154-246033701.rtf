@@ -1,0 +1,1438 @@
+{\rtf1\fbidis\ansi\ansicpg1252\deff0\nouicompat\deflang1033{\fonttbl{\f0\fnil\fcharset0 Calibri;}{\f1\fnil\fcharset1 Segoe UI Symbol;}{\f2\fnil\fcharset1 Segoe UI Symbol;}{\f3\fnil Calibri;}{\f4\fnil\fcharset1 Segoe UI Emoji;}}
+{\*\generator Riched20 10.0.22000}\viewkind4\uc1 
+\pard\sa200\sl276\slmult1\f0\fs22\lang9 <template>\par
+  <div class="classroom" :class="\{ 'minimize-video': minimizeVideo \}">\par
+    <!-- LEFT SIDE -->\par
+    <div class="left-pane" :style="\{ flex: minimizeVideo ? '1' : '2' \}">\par
+      <div class="header-section">\par
+        <h2>Live Classroom</h2>\par
+        <button class="minimize-btn" @click="minimizeVideo" :title="minimizeVideo ? 'Maximize' : 'Minimize'">\par
+          \{\{ minimizeVideo ? '\f1\u-10179?\u-8966?\f0 ' : '\f2\u10134?\f0 ' \}\}\par
+        </button>\par
+      </div>\par
+\par
+      <!-- VIDEO GRID -->\par
+      <div class="videos" :class="\{ minimized: minimizeVideo \}">\par
+        <div class="video-tile">\par
+          <div class="video-label">You</div>\par
+          <video ref="localVideo" autoplay playsinline muted></video>\par
+        </div>\par
+\par
+        <div class="video-tile">\par
+          <div class="video-label">Tutor</div>\par
+          <video ref="remoteVideo" autoplay playsinline></video>\par
+        </div>\par
+      </div>\par
+\par
+      <!-- WHITEBOARD -->\par
+      <div class="whiteboard-container">\par
+        <div class="whiteboard-header">\par
+          <h3>Whiteboard</h3>\par
+\par
+          <div class="whiteboard-tools">\par
+            <label>Color:</label>\par
+            <input type="color" v-model="penColor" />\par
+\par
+            <label>Size:</label>\par
+            <input type="range" min="1" max="20" v-model="penSize" />\par
+\par
+            <button @click="activatePen">Pen</button>\par
+            <button @click="activateEraser">Eraser</button>\par
+            <button @click="clearWhiteboard">Clear</button>\par
+          </div>\par
+        </div>\par
+\par
+        <canvas ref="canvas" class="whiteboard" @mousedown="startDrawing" @mousemove="draw" @mouseup="stopDrawing"\par
+          @mouseleave="stopDrawing"></canvas>\par
+      </div>\par
+\par
+      <!-- RAISE HAND BADGE -->\par
+      <div v-if="handRaised" class="hand-badge">\par
+\f3         \f2\u9995?\f3  \f0 You raised your hand\par
+      </div>\par
+\par
+      <!-- ZOOM TOOLBAR -->\par
+      <div class="zoom-toolbar">\par
+        <button @click="toggleMic" :class="\{ off: !micOn \}" title="Toggle Microphone">\par
+          <span>\{\{ micOn ? '\f4\u-10180?\u-8295?\u-497?\f0 ' : '\f1\u-10179?\u-8953?\f0 ' \}\}</span>\par
+          <p>Mic</p>\par
+        </button>\par
+\par
+        <button @click="toggleCamera" :class="\{ off: !cameraOn \}" title="Toggle Camera">\par
+          <span>\{\{ cameraOn ? '\f1\u-10180?\u-8283?\f0 ' : '\f1\u-10179?\u-8533?\f0 ' \}\}</span>\par
+          <p>Camera</p>\par
+        </button>\par
+\par
+        <button @click="toggleVolume" :class="\{ off: !volumeOn \}" title="Toggle Speaker">\par
+          <span>\{\{ volumeOn ? '\f1\u-10179?\u-8950?\f0 ' : '\f1\u-10179?\u-8952?\f0 ' \}\}</span>\par
+          <p>Speaker</p>\par
+        </button>\par
+\par
+        <button @click="raiseHand" :class="\{ active: handRaised \}" title="Raise Hand">\par
+          <span>\f2\u9995?\f0 </span>\par
+          <p>Hand</p>\par
+        </button>\par
+\par
+        <button @click="startScreenShare" :disabled="isSharingScreen" title="Share Screen">\par
+          <span>\f4\u-10179?\u-8795?\u-497?\f0 </span>\par
+          <p>Share</p>\par
+        </button>\par
+\par
+        <button @click="stopScreenShare" :disabled="!isSharingScreen" title="Stop Sharing">\par
+          <span>\f2\u9940?\f0 </span>\par
+          <p>Stop</p>\par
+        </button>\par
+\par
+        <button @click="toggleRecording" title="Toggle Recording">\par
+          <span>\{\{ isRecording ? '\f4\u9209?\u-497?\f0 ' : '\f4\u9210?\u-497?\f0 ' \}\}</span>\par
+          <p>Record</p>\par
+        </button>\par
+      </div>\par
+    </div>\par
+\par
+    <!-- RIGHT SIDE: CHAT -->\par
+    <div class="right-pane" :class="\{ minimized: minimizeVideo \}">\par
+      <div class="chat-header">\par
+        <h3>Chat</h3>\par
+        <div class="typing-indicator" v-if="typingText">\par
+          \{\{ typingText \}\}\par
+        </div>\par
+        <button class="close-btn" @click="minimizeVideo" v-if="minimizeVideo" title="Close">\f2\u10005?\f0 </button>\par
+      </div>\par
+\par
+      <div class="messages" ref="messagesContainer">\par
+        <div v-for="msg in messages" :key="msg.id" class="message" :class="\{ me: msg.sender === userName \}">\par
+          <div class="message-content">\par
+            <div class="message-text">\par
+              <span class="sender">\{\{ msg.sender \}\}:</span>\par
+\par
+              <span v-if="msg.type === 'text'">\{\{ msg.text \}\}</span>\par
+\par
+              <span v-else-if="msg.type === 'file'">\par
+                <a :href="backendBase + msg.file.url" target="_blank">\par
+                  \{\{ msg.file.name \}\}\par
+                </a>\par
+              </span>\par
+            </div>\par
+\par
+            <div class="meta">\par
+              <span class="time">\{\{ formatTime(msg.timestamp) \}\}</span>\par
+\par
+              <span v-if="msg.sender === userName" class="read-status">\par
+                \{\{ msg.read ? '\f2\u10003?\u10003?\f0 ' : '\f2\u10003?\f0 ' \}\}\par
+              </span>\par
+            </div>\par
+          </div>\par
+        </div>\par
+      </div>\par
+\par
+      <!-- CHAT INPUT -->\par
+      <div class="chat-input">\par
+        <input v-model="chatMessage" @input="handleTyping" @keyup.enter="sendMessage" type="text"\par
+          placeholder="Type a message..." />\par
+\par
+        <input type="file" @change="handleFileSelect" class="file-input" ref="fileInput" />\par
+        <button @click="triggerFileInput" class="file-input-label" title="Attach file">\f1\u-10179?\u-9010?\f0 </button>\par
+\par
+        <button @click="sendMessage" class="send-btn">Send</button>\par
+      </div>\par
+    </div>\par
+  </div>\par
+</template>\par
+<script setup>\par
+import \{ ref, onMounted, onBeforeUnmount, watch, nextTick \} from 'vue';\par
+import \{ io \} from 'socket.io-client';\par
+import \{ useRoute \} from 'vue-router';\par
+import axios from 'axios';\par
+import \{ useAuthStore \} from '../store/auth';\par
+\par
+const route = useRoute();\par
+const auth = useAuthStore();\par
+\par
+const backendBase = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";\par
+// \f2\u9989?\f3  \f0 single definition, fallback to localhost if env is missing\par
+const api = axios.create(\{ baseURL: backendBase \}); // \f2\u9989?\f3  \f0 define api\par
+const socket = io(backendBase); // \f2\u9989?\f3  \f0 define socket\par
+\par
+const roomId = route.params.sessionId;\par
+const userName = auth.user?.name || 'Unknown';\par
+const userRole = auth.user?.role || 'guest';\par
+\par
+\par
+const localVideo = ref(null);\par
+const remoteVideo = ref(null);\par
+const canvas = ref(null);\par
+const messagesContainer = ref(null);\par
+const fileInput = ref(null);\par
+\par
+// socket is initialized above (use backendBase when provided)\par
+\par
+let pc = null;\par
+let localStream = null;\par
+let screenStream = null;\par
+\par
+const isSharingScreen = ref(false);\par
+const isRecording = ref(false);\par
+let recorder = null;\par
+let recordedChunks = [];\par
+\par
+const messages = ref([]);\par
+const chatMessage = ref('');\par
+const typingText = ref('');\par
+let typingTimeout = null;\par
+\par
+// Whiteboard\par
+let ctx = null;\par
+let drawing = false;\par
+let lastX = 0;\par
+let lastY = 0;\par
+\par
+const penColor = ref('#000000');\par
+const penSize = ref(3);\par
+\par
+// Zoom controls\par
+const cameraOn = ref(true);\par
+const micOn = ref(true);\par
+const volumeOn = ref(true);\par
+const handRaised = ref(false);\par
+const minimizeVideo = ref(false);\par
+\par
+\par
+\par
+// Utility\par
+function generateId() \{\par
+  return Date.now().toString(36) + Math.random().toString(36).slice(2);\par
+\}\par
+\par
+function formatTime(ts) \{\par
+  const d = new Date(ts);\par
+  return d.toLocaleTimeString([], \{ hour: '2-digit', minute: '2-digit' \});\par
+\}\par
+\par
+// WebRTC\par
+function createPeerConnection() \{\par
+  pc = new RTCPeerConnection(\{\par
+    iceServers: [\{ urls: 'stun:stun.l.google.com:19302' \}]\par
+  \});\par
+\par
+  pc.onicecandidate = (event) => \{\par
+    if (event.candidate) \{\par
+      socket.emit('ice-candidate', \{ roomId, candidate: event.candidate \});\par
+    \}\par
+  \};\par
+\par
+  pc.ontrack = (event) => \{\par
+    remoteVideo.value.srcObject = event.streams[0];\par
+  \};\par
+\par
+  if (localStream) \{\par
+    localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));\par
+  \}\par
+\}\par
+\par
+async function startCall() \{\par
+  if (!pc) createPeerConnection();\par
+\par
+  const offer = await pc.createOffer();\par
+  await pc.setLocalDescription(offer);\par
+\par
+  socket.emit('offer', \{ roomId, offer \});\par
+\}\par
+\par
+// FIXED SCREEN SHARE\par
+async function startScreenShare() \{\par
+  if (!pc) createPeerConnection();\par
+\par
+  // Ensure local stream exists\par
+  if (!localStream) \{\par
+    localStream = await navigator.mediaDevices.getUserMedia(\{ video: true, audio: true \});\par
+    localVideo.value.srcObject = localStream;\par
+    localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));\par
+  \}\par
+\par
+  // Get screen\par
+  screenStream = await navigator.mediaDevices.getDisplayMedia(\{ video: true \});\par
+  const screenTrack = screenStream.getVideoTracks()[0];\par
+\par
+  // Ensure video sender exists\par
+  let sender = pc.getSenders().find((s) => s.track?.kind === 'video');\par
+  if (!sender) \{\par
+    const dummy = localStream.getVideoTracks()[0];\par
+    sender = pc.addTrack(dummy, localStream);\par
+  \}\par
+\par
+  await sender.replaceTrack(screenTrack);\par
+\par
+  localVideo.value.srcObject = screenStream;\par
+  isSharingScreen.value = true;\par
+\par
+  screenTrack.onended = stopScreenShare;\par
+\}\par
+\par
+async function stopScreenShare() \{\par
+  if (!isSharingScreen.value) return;\par
+\par
+  screenStream?.getTracks().forEach((t) => t.stop());\par
+  screenStream = null;\par
+\par
+  const cameraTrack = localStream?.getVideoTracks()[0];\par
+  const sender = pc.getSenders().find((s) => s.track?.kind === 'video');\par
+\par
+  if (sender && cameraTrack) \{\par
+    await sender.replaceTrack(cameraTrack);\par
+  \}\par
+\par
+  localVideo.value.srcObject = localStream;\par
+  isSharingScreen.value = false;\par
+\}\par
+\par
+// Recording\par
+function toggleRecording() \{\par
+  if (!remoteVideo.value?.srcObject) return;\par
+\par
+  if (!isRecording.value) \{\par
+    recorder = new MediaRecorder(remoteVideo.value.srcObject);\par
+    recordedChunks = [];\par
+\par
+    recorder.ondataavailable = (e) => \{\par
+      if (e.data.size > 0) recordedChunks.push(e.data);\par
+    \};\par
+\par
+    recorder.onstop = () => \{\par
+      const blob = new Blob(recordedChunks, \{ type: 'video/webm' \});\par
+      const url = URL.createObjectURL(blob);\par
+      const a = document.createElement('a');\par
+      a.href = url;\par
+      a.download = `session-$\{roomId\}.webm`;\par
+      a.click();\par
+      URL.revokeObjectURL(url);\par
+    \};\par
+\par
+    recorder.start();\par
+    isRecording.value = true;\par
+  \} else \{\par
+    recorder.stop();\par
+    isRecording.value = false;\par
+  \}\par
+\}\par
+\par
+// Chat\par
+function sendMessage() \{\par
+  if (!chatMessage.value.trim()) return;\par
+\par
+  const msg = \{\par
+    id: generateId(),\par
+    roomId,\par
+    sender: userName,\par
+    type: 'text',\par
+    text: chatMessage.value,\par
+    timestamp: Date.now(),\par
+    read: false\par
+  \};\par
+\par
+  messages.value.push(msg);\par
+  socket.emit('chat-message', \{ roomId, message: msg \});\par
+  chatMessage.value = '';\par
+\par
+  emitReadForAll();\par
+\}\par
+\par
+function handleTyping() \{\par
+  socket.emit('typing', \{ roomId, userName, isTyping: !!chatMessage.value \});\par
+\par
+  clearTimeout(typingTimeout);\par
+  typingTimeout = setTimeout(() => \{\par
+    socket.emit('typing', \{ roomId, userName, isTyping: false \});\par
+  \}, 1500);\par
+\}\par
+\par
+function triggerFileInput() \{\par
+  fileInput.value?.click();\par
+\}\par
+\par
+function emitReadForAll() \{\par
+  const unread = messages.value\par
+    .filter((m) => m.sender !== userName && !m.read)\par
+    .map((m) => m.id);\par
+\par
+  if (unread.length) \{\par
+    socket.emit('message-read', \{ roomId, messageIds: unread \});\par
+    messages.value.forEach((m) => \{\par
+      if (unread.includes(m.id)) m.read = true;\par
+    \});\par
+  \}\par
+\}\par
+\par
+async function handleFileSelect(e) \{\par
+  const file = e.target.files[0];\par
+  if (!file) return;\par
+\par
+  const formData = new FormData();\par
+  formData.append('file', file);\par
+\par
+  // use shared api instance so requests go through the Vite proxy in dev\par
+  const res = await api.post('/upload', formData);\par
+\par
+  const msg = \{\par
+    id: generateId(),\par
+    roomId,\par
+    sender: userName,\par
+    type: 'file',\par
+    file: \{ url: res.data.url, name: res.data.name \},\par
+    timestamp: Date.now(),\par
+    read: false\par
+  \};\par
+\par
+  messages.value.push(msg);\par
+  socket.emit('file-shared', \{ roomId, file: msg \});\par
+\par
+  emitReadForAll();\par
+  e.target.value = '';\par
+\}\par
+\par
+// Whiteboard\par
+function resizeCanvas() \{\par
+  const rect = canvas.value.getBoundingClientRect();\par
+  canvas.value.width = rect.width;\par
+  canvas.value.height = rect.height;\par
+\}\par
+\par
+function startDrawing(e) \{\par
+  drawing = true;\par
+  const rect = canvas.value.getBoundingClientRect();\par
+  lastX = e.clientX - rect.left;\par
+  lastY = e.clientY - rect.top;\par
+\}\par
+\par
+function draw(e) \{\par
+  if (!drawing) return;\par
+\par
+  const rect = canvas.value.getBoundingClientRect();\par
+  const x = e.clientX - rect.left;\par
+  const y = e.clientY - rect.top;\par
+\par
+  const line = \{\par
+    x1: lastX,\par
+    y1: lastY,\par
+    x2: x,\par
+    y2: y,\par
+    color: penColor.value,\par
+    size: Number(penSize.value)\par
+  \};\par
+\par
+  drawLine(line);\par
+  socket.emit('whiteboard-draw', \{ roomId, line \});\par
+\par
+  lastX = x;\par
+  lastY = y;\par
+\}\par
+\par
+function stopDrawing() \{\par
+  drawing = false;\par
+\}\par
+\par
+function drawLine(line) \{\par
+  ctx.strokeStyle = line.color;\par
+  ctx.lineWidth = line.size;\par
+  ctx.lineCap = 'round';\par
+  ctx.beginPath();\par
+  ctx.moveTo(line.x1, line.y1);\par
+  ctx.lineTo(line.x2, line.y2);\par
+  ctx.stroke();\par
+\}\par
+\par
+function clearWhiteboard() \{\par
+  ctx.clearRect(0, 0, canvas.value.width, canvas.value.height);\par
+  socket.emit('whiteboard-clear', \{ roomId \});\par
+\}\par
+\par
+function activateEraser() \{\par
+  penColor.value = '#ffffff';\par
+  penSize.value = 20;\par
+\}\par
+\par
+function activatePen() \{\par
+  penColor.value = '#000000';\par
+  penSize.value = 3;\par
+\}\par
+\par
+// Zoom controls\par
+function toggleCamera() \{\par
+  const track = localStream?.getVideoTracks()[0];\par
+  if (!track) return;\par
+  track.enabled = !track.enabled;\par
+  cameraOn.value = track.enabled;\par
+\}\par
+\par
+function toggleMic() \{\par
+  const track = localStream?.getAudioTracks()[0];\par
+  if (!track) return;\par
+  track.enabled = !track.enabled;\par
+  micOn.value = track.enabled;\par
+\}\par
+\par
+function toggleVolume() \{\par
+  volumeOn.value = !volumeOn.value;\par
+  remoteVideo.value.muted = !volumeOn.value;\par
+\}\par
+\par
+function raiseHand() \{\par
+  handRaised.value = !handRaised.value;\par
+  socket.emit('raise-hand', \{\par
+    roomId,\par
+    userName,\par
+    raised: handRaised.value\par
+  \});\par
+\}\par
+\par
+// Auto-scroll chat\par
+watch(messages, async () => \{\par
+  await nextTick();\par
+  messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;\par
+\});\par
+\par
+// Lifecycle\par
+onMounted(async () => \{\par
+  try \{\par
+    // Init whiteboard\par
+    resizeCanvas();\par
+    window.addEventListener('resize', resizeCanvas);\par
+    ctx = canvas.value.getContext('2d');\par
+\par
+    // Check if roomId is available\par
+    if (!roomId) \{\par
+      console.warn('No session ID provided. Classroom features will be limited.');\par
+      return;\par
+    \}\par
+\par
+    // Camera/mic only for tutor/child\par
+    if (['tutor', 'child'].includes(userRole)) \{\par
+      try \{\par
+        localStream = await navigator.mediaDevices.getUserMedia(\{ video: true, audio: true \});\par
+        localVideo.value.srcObject = localStream;\par
+      \} catch (err) \{\par
+        console.warn('Camera/mic access denied:', err);\par
+      \}\par
+    \}\par
+\par
+    // Load chat history\par
+    try \{\par
+      const historyRes = await api.get(`/chat/$\{roomId\}`);\par
+      messages.value = historyRes.data || [];\par
+    \} catch (err) \{\par
+      console.warn('Could not load chat history:', err);\par
+    \}\par
+\par
+    // Join room\par
+    socket.emit('join-room', \{ roomId, userName \});\par
+\par
+    // WebRTC signaling\par
+    socket.on('offer', async (\{ offer \}) => \{\par
+      if (!pc) createPeerConnection();\par
+      await pc.setRemoteDescription(offer);\par
+      const answer = await pc.createAnswer();\par
+      await pc.setLocalDescription(answer);\par
+      socket.emit('answer', \{ roomId, answer \});\par
+    \});\par
+\par
+    socket.on('answer', async (\{ answer \}) => \{\par
+      await pc?.setRemoteDescription(answer);\par
+    \});\par
+\par
+    socket.on('ice-candidate', async (\{ candidate \}) => \{\par
+      await pc?.addIceCandidate(candidate);\par
+    \});\par
+\par
+    // Chat\par
+    socket.on('chat-message', (msg) => \{\par
+      messages.value.push(msg);\par
+      emitReadForAll();\par
+    \});\par
+\par
+    socket.on('typing', (\{ userName: other, isTyping \}) => \{\par
+      typingText.value = isTyping ? `$\{other\} is typing...` : '';\par
+    \});\par
+\par
+    socket.on('message-read', (\{ messageIds \}) => \{\par
+      messages.value.forEach((m) => \{\par
+        if (messageIds.includes(m.id) && m.sender === userName) m.read = true;\par
+      \});\par
+    \});\par
+\par
+    // Whiteboard sync\par
+    socket.on('whiteboard-draw', (\{ line \}) => drawLine(line));\par
+    socket.on('whiteboard-clear', () => ctx.clearRect(0, 0, canvas.value.width, canvas.value.height));\par
+\par
+    // File sharing\par
+    socket.on('file-shared', (\{ file \}) => \{\par
+      messages.value.push(file);\par
+      emitReadForAll();\par
+    \});\par
+\par
+    // Raise hand\par
+    socket.on('raise-hand', (\{ userName: user, raised \}) => \{\par
+      console.log(`$\{user\} raised hand: $\{raised\}`);\par
+    \});\par
+\par
+    // Auto-start call for tutor/child\par
+    if (['tutor', 'child'].includes(userRole)) startCall();\par
+  \} catch (err) \{\par
+    console.error('Error mounting classroom:', err);\par
+  \}\par
+\});\par
+\par
+onBeforeUnmount(() => \{\par
+  socket.disconnect();\par
+  pc?.close();\par
+  localStream?.getTracks().forEach((t) => t.stop());\par
+  screenStream?.getTracks().forEach((t) => t.stop());\par
+  window.removeEventListener('resize', resizeCanvas);\par
+\});\par
+</script>\par
+<style scoped>\par
+/* GLOBAL RESET */\par
+* \{\par
+  box-sizing: border-box;\par
+\}\par
+\par
+body \{\par
+  margin: 0;\par
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;\par
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);\par
+  color: #333;\par
+\}\par
+\par
+/* MAIN LAYOUT */\par
+.classroom \{\par
+  display: flex;\par
+  height: 150vh;\par
+  gap: 1.5rem;\par
+  padding: 1.5rem;\par
+  overflow: hidden;\par
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);\par
+\}\par
+\par
+.classroom.minimize-video \{\par
+  gap: 0;\par
+\}\par
+\par
+/* HEADER SECTION */\par
+.header-section \{\par
+  display: flex;\par
+  justify-content: space-between;\par
+  align-items: center;\par
+  margin-bottom: 0.5rem;\par
+\}\par
+\par
+.header-section h2 \{\par
+  margin: 0;\par
+  font-size: 1.8rem;\par
+  color: white;\par
+  font-weight: 700;\par
+  letter-spacing: -0.5px;\par
+\}\par
+\par
+.minimize-btn \{\par
+  background: rgba(255, 255, 255, 0.2);\par
+  border: none;\par
+  color: white;\par
+  width: 40px;\par
+  height: 40px;\par
+  border-radius: 50%;\par
+  cursor: pointer;\par
+  font-size: 1.3rem;\par
+  transition: all 0.3s ease;\par
+  display: flex;\par
+  align-items: center;\par
+  justify-content: center;\par
+\}\par
+\par
+.minimize-btn:hover \{\par
+  background: rgba(255, 255, 255, 0.3);\par
+  transform: scale(1.1);\par
+\}\par
+\par
+/* LEFT PANE */\par
+.left-pane \{\par
+  flex: 2;\par
+  display: flex;\par
+  flex-direction: column;\par
+  gap: 1rem;\par
+  position: relative;\par
+  overflow: hidden;\par
+\}\par
+\par
+.left-pane.minimize-video \{\par
+  flex: 0.3;\par
+\}\par
+\par
+/* RIGHT PANE (CHAT) */\par
+.right-pane \{\par
+  flex: 1;\par
+  display: flex;\par
+  flex-direction: column;\par
+  background: white;\par
+  border-radius: 20px;\par
+  padding: 1.2rem;\par
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);\par
+  position: relative;\par
+  overflow: hidden;\par
+  backdrop-filter: blur(10px);\par
+\}\par
+\par
+.right-pane.minimized \{\par
+  display: none;\par
+\}\par
+\par
+/* VIDEO SECTION */\par
+.videos \{\par
+  display: grid;\par
+  grid-template-columns: repeat(2, 1fr);\par
+  gap: 1rem;\par
+  flex-shrink: 0;\par
+\}\par
+\par
+.videos.minimized \{\par
+  display: grid;\par
+  grid-template-columns: 1fr;\par
+  gap: 0.5rem;\par
+  height: auto;\par
+\}\par
+\par
+.video-tile \{\par
+  display: flex;\par
+  flex-direction: column;\par
+  gap: 0.5rem;\par
+  position: relative;\par
+  border-radius: 16px;\par
+  overflow: hidden;\par
+  background: #000;\par
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);\par
+  transition: all 0.3s ease;\par
+\}\par
+\par
+.video-tile:hover \{\par
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);\par
+  transform: translateY(-2px);\par
+\}\par
+\par
+.video-label \{\par
+  position: absolute;\par
+  top: 0.8rem;\par
+  left: 0.8rem;\par
+  background: rgba(0, 0, 0, 0.6);\par
+  color: white;\par
+  padding: 0.4rem 0.8rem;\par
+  border-radius: 20px;\par
+  font-size: 0.85rem;\par
+  font-weight: 600;\par
+  z-index: 10;\par
+  backdrop-filter: blur(10px);\par
+\}\par
+\par
+video \{\par
+  width: 100%;\par
+  height: 240px;\par
+  background: #000;\par
+  border-radius: 16px;\par
+  object-fit: cover;\par
+  display: block;\par
+\}\par
+\par
+.videos.minimized video \{\par
+  height: 120px;\par
+\}\par
+\par
+/* WHITEBOARD */\par
+.whiteboard-container \{\par
+  flex: 1;\par
+  display: flex;\par
+  flex-direction: column;\par
+  background: white;\par
+  border-radius: 20px;\par
+  padding: 1.2rem;\par
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);\par
+  overflow: hidden;\par
+  border: 2px solid rgba(102, 126, 234, 0.1);\par
+\}\par
+\par
+.whiteboard-header \{\par
+  display: flex;\par
+  justify-content: space-between;\par
+  align-items: center;\par
+  margin-bottom: 1rem;\par
+  gap: 1rem;\par
+  flex-wrap: wrap;\par
+\}\par
+\par
+.whiteboard-header h3 \{\par
+  margin: 0;\par
+  font-size: 1.3rem;\par
+  color: #333;\par
+\}\par
+\par
+.whiteboard-tools \{\par
+  display: flex;\par
+  gap: 0.8rem;\par
+  align-items: center;\par
+  flex-wrap: wrap;\par
+\}\par
+\par
+.whiteboard-tools label \{\par
+  font-size: 0.9rem;\par
+  font-weight: 500;\par
+  color: #555;\par
+\}\par
+\par
+.whiteboard-tools input[type="color"] \{\par
+  width: 40px;\par
+  height: 40px;\par
+  border: none;\par
+  border-radius: 8px;\par
+  cursor: pointer;\par
+\}\par
+\par
+.whiteboard-tools input[type="range"] \{\par
+  width: 80px;\par
+\}\par
+\par
+.whiteboard-tools button \{\par
+  padding: 0.6rem 1.2rem;\par
+  background: linear-gradient(135deg, #667eea, #764ba2);\par
+  color: white;\par
+  border: none;\par
+  border-radius: 8px;\par
+  cursor: pointer;\par
+  font-weight: 600;\par
+  transition: all 0.3s ease;\par
+  font-size: 0.9rem;\par
+\}\par
+\par
+.whiteboard-tools button:hover \{\par
+  transform: translateY(-2px);\par
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);\par
+\}\par
+\par
+.whiteboard \{\par
+  flex: 1;\par
+  border-radius: 12px;\par
+  border: 2px solid #e0e0e0;\par
+  background: white;\par
+  cursor: crosshair;\par
+  min-height: 300px;\par
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.05);\par
+\}\par
+\par
+/* RAISE HAND BADGE */\par
+.hand-badge \{\par
+  position: absolute;\par
+  top: 1rem;\par
+  right: 1rem;\par
+  background: linear-gradient(135deg, #ffd700, #ffed4e);\par
+  padding: 0.8rem 1.2rem;\par
+  border-radius: 12px;\par
+  font-weight: 700;\par
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);\par
+  z-index: 20;\par
+  animation: pulse 1.5s ease-in-out infinite;\par
+\}\par
+\par
+@keyframes pulse \{\par
+\par
+  0%,\par
+  100% \{\par
+    transform: scale(1);\par
+  \}\par
+\par
+  50% \{\par
+    transform: scale(1.05);\par
+  \}\par
+\}\par
+\par
+/* ZOOM TOOLBAR - MODERN DESIGN */\par
+.zoom-toolbar \{\par
+  position: relative;\par
+  background: rgba(30, 30, 30, 0.95);\par
+  padding: 1rem 1.5rem;\par
+  border-radius: 20px;\par
+  display: flex;\par
+  gap: 1rem;\par
+  flex-wrap: wrap;\par
+  justify-content: center;\par
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);\par
+  backdrop-filter: blur(20px);\par
+  border: 1px solid rgba(255, 255, 255, 0.1);\par
+  z-index: 50;\par
+  max-width: 100%;\par
+  margin-top: auto;\par
+\}\par
+\par
+.zoom-toolbar button \{\par
+  background: rgba(255, 255, 255, 0.1);\par
+  border: 1px solid rgba(255, 255, 255, 0.2);\par
+  color: white;\par
+  text-align: center;\par
+  cursor: pointer;\par
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);\par
+  font-size: 1.3rem;\par
+  display: flex;\par
+  flex-direction: column;\par
+  align-items: center;\par
+  justify-content: center;\par
+  width: 60px;\par
+  height: 60px;\par
+  border-radius: 12px;\par
+  padding: 0;\par
+  position: relative;\par
+\}\par
+\par
+.zoom-toolbar button span \{\par
+  font-size: 1.5rem;\par
+  display: block;\par
+\}\par
+\par
+.zoom-toolbar button p \{\par
+  margin: 0.25rem 0 0 0;\par
+  font-size: 0.7rem;\par
+  opacity: 0.8;\par
+  font-weight: 600;\par
+\}\par
+\par
+.zoom-toolbar button:hover \{\par
+  background: rgba(96, 165, 250, 0.3);\par
+  border-color: rgba(96, 165, 250, 0.5);\par
+  transform: translateY(-4px);\par
+  box-shadow: 0 8px 24px rgba(96, 165, 250, 0.3);\par
+\}\par
+\par
+.zoom-toolbar button.off \{\par
+  background: rgba(255, 77, 77, 0.2);\par
+  border-color: rgba(255, 77, 77, 0.5);\par
+  color: #ff6b6b;\par
+\}\par
+\par
+.zoom-toolbar button.off:hover \{\par
+  background: rgba(255, 77, 77, 0.3);\par
+  box-shadow: 0 8px 24px rgba(255, 77, 77, 0.3);\par
+\}\par
+\par
+.zoom-toolbar button.active \{\par
+  background: rgba(74, 144, 226, 0.3);\par
+  border-color: rgba(74, 144, 226, 0.7);\par
+  color: #60a5fa;\par
+\}\par
+\par
+.zoom-toolbar button:disabled \{\par
+  opacity: 0.4;\par
+  cursor: not-allowed;\par
+  transform: none;\par
+\}\par
+\par
+.zoom-toolbar button:disabled:hover \{\par
+  transform: none;\par
+  box-shadow: none;\par
+\}\par
+\par
+/* CHAT HEADER */\par
+.chat-header \{\par
+  display: flex;\par
+  justify-content: space-between;\par
+  align-items: center;\par
+  margin-bottom: 1rem;\par
+  padding-bottom: 1rem;\par
+  border-bottom: 2px solid #f0f0f0;\par
+  gap: 1rem;\par
+\}\par
+\par
+.chat-header h3 \{\par
+  margin: 0;\par
+  font-size: 1.3rem;\par
+  color: #333;\par
+  font-weight: 700;\par
+\}\par
+\par
+.close-btn \{\par
+  background: none;\par
+  border: none;\par
+  color: #999;\par
+  font-size: 1.5rem;\par
+  cursor: pointer;\par
+  transition: all 0.3s ease;\par
+  padding: 0.25rem 0.5rem;\par
+\}\par
+\par
+.close-btn:hover \{\par
+  color: #333;\par
+  transform: scale(1.2);\par
+\}\par
+\par
+.typing-indicator \{\par
+  font-size: 0.85rem;\par
+  color: #888;\par
+  font-style: italic;\par
+  animation: typing 1.5s infinite;\par
+\}\par
+\par
+@keyframes typing \{\par
+\par
+  0%,\par
+  100% \{\par
+    opacity: 0.6;\par
+  \}\par
+\par
+  50% \{\par
+    opacity: 1;\par
+  \}\par
+\}\par
+\par
+/* CHAT MESSAGES */\par
+.messages \{\par
+  flex: 1;\par
+  overflow-y: auto;\par
+  margin-bottom: 0.5rem;\par
+  padding: 0.5rem;\par
+  display: flex;\par
+  flex-direction: column;\par
+  gap: 0.8rem;\par
+\}\par
+\par
+.messages::-webkit-scrollbar \{\par
+  width: 6px;\par
+\}\par
+\par
+.messages::-webkit-scrollbar-track \{\par
+  background: #f1f1f1;\par
+  border-radius: 10px;\par
+\}\par
+\par
+.messages::-webkit-scrollbar-thumb \{\par
+  background: #ccc;\par
+  border-radius: 10px;\par
+\}\par
+\par
+.messages::-webkit-scrollbar-thumb:hover \{\par
+  background: #999;\par
+\}\par
+\par
+.message \{\par
+  display: flex;\par
+  justify-content: flex-start;\par
+  animation: slideIn 0.3s ease-out;\par
+\}\par
+\par
+.message.me \{\par
+  justify-content: flex-end;\par
+\}\par
+\par
+@keyframes slideIn \{\par
+  from \{\par
+    opacity: 0;\par
+    transform: translateY(10px);\par
+  \}\par
+\par
+  to \{\par
+    opacity: 1;\par
+    transform: translateY(0);\par
+  \}\par
+\}\par
+\par
+.message-content \{\par
+  max-width: 85%;\par
+\}\par
+\par
+.message-text \{\par
+  padding: 0.8rem 1.2rem;\par
+  border-radius: 14px;\par
+  background: #f1f1f1;\par
+  line-height: 1.45;\par
+  font-size: 0.95rem;\par
+  word-wrap: break-word;\par
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);\par
+  transition: all 0.2s ease;\par
+\}\par
+\par
+.message-text:hover \{\par
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);\par
+\}\par
+\par
+.message.me .message-text \{\par
+  background: linear-gradient(135deg, #667eea, #764ba2);\par
+  color: white;\par
+\}\par
+\par
+.sender \{\par
+  font-weight: 700;\par
+  margin-right: 0.5rem;\par
+  opacity: 0.9;\par
+\}\par
+\par
+.message-text a \{\par
+  color: inherit;\par
+  text-decoration: underline;\par
+  font-weight: 600;\par
+\}\par
+\par
+.meta \{\par
+  font-size: 0.75rem;\par
+  color: #999;\par
+  margin-top: 0.3rem;\par
+  margin-left: 0.5rem;\par
+\}\par
+\par
+.message.me .meta \{\par
+  color: rgba(255, 255, 255, 0.7);\par
+  margin-left: auto;\par
+  margin-right: 0.5rem;\par
+\}\par
+\par
+.time \{\par
+  margin-right: 0.5rem;\par
+\}\par
+\par
+.read-status \{\par
+  font-weight: 600;\par
+\}\par
+\par
+/* CHAT INPUT */\par
+.chat-input \{\par
+  display: flex;\par
+  gap: 0.6rem;\par
+  padding: 1rem;\par
+  background: #f9f9f9;\par
+  border-radius: 14px;\par
+  border: 2px solid #e0e0e0;\par
+  transition: all 0.3s ease;\par
+  flex-shrink: 0;\par
+\}\par
+\par
+.chat-input:focus-within \{\par
+  border-color: #667eea;\par
+  background: white;\par
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);\par
+\}\par
+\par
+.chat-input input[type="text"] \{\par
+  flex: 1;\par
+  padding: 0.8rem 1rem;\par
+  border-radius: 10px;\par
+  border: 1px solid #ddd;\par
+  outline: none;\par
+  transition: all 0.2s ease;\par
+  font-size: 0.95rem;\par
+  font-family: inherit;\par
+\}\par
+\par
+.chat-input input[type="text"]:focus \{\par
+  border-color: #667eea;\par
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);\par
+\}\par
+\par
+.chat-input input[type="text"]::placeholder \{\par
+  color: #999;\par
+\}\par
+\par
+.file-input-label \{\par
+  display: flex;\par
+  align-items: center;\par
+  justify-content: center;\par
+  font-size: 1.3rem;\par
+  cursor: pointer;\par
+  transition: all 0.2s ease;\par
+  padding: 0.8rem;\par
+  border-radius: 8px;\par
+  background: rgba(102, 126, 234, 0.1);\par
+  border: 1px solid rgba(102, 126, 234, 0.3);\par
+  color: #667eea;\par
+  flex-shrink: 0;\par
+\}\par
+\par
+.file-input-label:hover \{\par
+  background: rgba(102, 126, 234, 0.2);\par
+  transform: scale(1.1);\par
+  border-color: rgba(102, 126, 234, 0.5);\par
+\}\par
+\par
+.file-input-label:active \{\par
+  transform: scale(0.95);\par
+\}\par
+\par
+.file-input \{\par
+  display: none;\par
+\}\par
+\par
+.send-btn \{\par
+  padding: 0.8rem 1.5rem;\par
+  background: linear-gradient(135deg, #667eea, #764ba2);\par
+  color: white;\par
+  border: none;\par
+  border-radius: 10px;\par
+  cursor: pointer;\par
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);\par
+  font-weight: 700;\par
+  font-size: 0.95rem;\par
+  flex-shrink: 0;\par
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);\par
+\}\par
+\par
+.send-btn:hover \{\par
+  transform: translateY(-2px);\par
+  box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);\par
+\}\par
+\par
+.send-btn:active \{\par
+  transform: translateY(0);\par
+\}\par
+\par
+/* RESPONSIVE DESIGN */\par
+@media (max-width: 1024px) \{\par
+  .classroom \{\par
+    padding: 1rem;\par
+    gap: 1rem;\par
+  \}\par
+\par
+  .zoom-toolbar \{\par
+    gap: 0.8rem;\par
+    padding: 0.8rem 1rem;\par
+  \}\par
+\par
+  .zoom-toolbar button \{\par
+    width: 50px;\par
+    height: 50px;\par
+    font-size: 1.2rem;\par
+  \}\par
+\par
+  .videos \{\par
+    gap: 0.8rem;\par
+  \}\par
+\par
+  video \{\par
+    height: 200px;\par
+  \}\par
+\}\par
+\par
+@media (max-width: 768px) \{\par
+  .classroom \{\par
+    flex-direction: column;\par
+    height: auto;\par
+    min-height: 100vh;\par
+    padding: 1rem;\par
+    gap: 1rem;\par
+  \}\par
+\par
+  .classroom.minimize-video \{\par
+    flex-direction: row;\par
+  \}\par
+\par
+  .left-pane \{\par
+    flex: 1;\par
+    height: auto;\par
+    min-height: 300px;\par
+  \}\par
+\par
+  .left-pane.minimize-video \{\par
+    flex: 0.2;\par
+    min-height: auto;\par
+  \}\par
+\par
+  .right-pane \{\par
+    flex: 1;\par
+    min-height: 400px;\par
+    max-height: 600px;\par
+  \}\par
+\par
+  .right-pane.minimized \{\par
+    display: flex;\par
+  \}\par
+\par
+  .videos \{\par
+    grid-template-columns: 1fr;\par
+    gap: 0.8rem;\par
+  \}\par
+\par
+  .videos.minimized \{\par
+    grid-template-columns: 1fr;\par
+  \}\par
+\par
+  video \{\par
+    height: 180px;\par
+  \}\par
+\par
+  .videos.minimized video \{\par
+    height: 100px;\par
+  \}\par
+\par
+  .zoom-toolbar \{\par
+    position: relative;\par
+    gap: 0.6rem;\par
+    padding: 0.8rem 1rem;\par
+    max-width: 100%;\par
+    margin-top: auto;\par
+  \}\par
+\par
+  .zoom-toolbar button \{\par
+    width: 45px;\par
+    height: 45px;\par
+    font-size: 1.1rem;\par
+  \}\par
+\par
+  .zoom-toolbar button p \{\par
+    font-size: 0.65rem;\par
+  \}\par
+\par
+  .chat-input \{\par
+    flex-wrap: wrap;\par
+    gap: 0.5rem;\par
+  \}\par
+\par
+  .chat-input input[type="text"] \{\par
+    flex: 1 1 100%;\par
+    min-width: 0;\par
+  \}\par
+\par
+  .file-input-label,\par
+  .send-btn \{\par
+    flex: 1;\par
+  \}\par
+\par
+  .messages \{\par
+    gap: 0.6rem;\par
+  \}\par
+\par
+  .message-content \{\par
+    max-width: 95%;\par
+  \}\par
+\par
+  .message-text \{\par
+    padding: 0.7rem 1rem;\par
+    font-size: 0.9rem;\par
+  \}\par
+\par
+  .header-section h2 \{\par
+    font-size: 1.4rem;\par
+  \}\par
+\par
+  .chat-header h3 \{\par
+    font-size: 1.1rem;\par
+  \}\par
+\par
+  .whiteboard-header \{\par
+    flex-direction: column;\par
+    align-items: flex-start;\par
+  \}\par
+\par
+  .whiteboard-tools \{\par
+    width: 100%;\par
+    overflow-x: auto;\par
+  \}\par
+\}\par
+\par
+@media (max-width: 480px) \{\par
+  .classroom \{\par
+    padding: 0.75rem;\par
+    gap: 0.75rem;\par
+  \}\par
+\par
+  .header-section h2 \{\par
+    font-size: 1.2rem;\par
+  \}\par
+\par
+  .minimize-btn \{\par
+    width: 35px;\par
+    height: 35px;\par
+    font-size: 1.1rem;\par
+  \}\par
+\par
+  .left-pane \{\par
+    min-height: 250px;\par
+  \}\par
+\par
+  .right-pane \{\par
+    min-height: 350px;\par
+    padding: 0.8rem;\par
+    border-radius: 16px;\par
+  \}\par
+\par
+  video \{\par
+    height: 150px;\par
+  \}\par
+\par
+  .videos.minimized video \{\par
+    height: 80px;\par
+  \}\par
+\par
+  .zoom-toolbar \{\par
+    gap: 0.5rem;\par
+    padding: 0.6rem 0.8rem;\par
+    top: 0.75rem;\par
+  \}\par
+\par
+  .zoom-toolbar button \{\par
+    width: 40px;\par
+    height: 40px;\par
+    font-size: 1rem;\par
+  \}\par
+\par
+  .zoom-toolbar button span \{\par
+    font-size: 1.2rem;\par
+  \}\par
+\par
+  .zoom-toolbar button p \{\par
+    font-size: 0.6rem;\par
+  \}\par
+\par
+  .chat-header \{\par
+    margin-bottom: 0.75rem;\par
+    padding-bottom: 0.75rem;\par
+  \}\par
+\par
+  .chat-header h3 \{\par
+    font-size: 1rem;\par
+  \}\par
+\par
+  .messages \{\par
+    margin-bottom: 0.25rem;\par
+    gap: 0.5rem;\par
+  \}\par
+\par
+  .message-text \{\par
+    padding: 0.6rem 0.9rem;\par
+    font-size: 0.85rem;\par
+    border-radius: 10px;\par
+  \}\par
+\par
+  .meta \{\par
+    font-size: 0.7rem;\par
+  \}\par
+\par
+  .chat-input \{\par
+    padding: 0.75rem;\par
+    gap: 0.5rem;\par
+    border-radius: 10px;\par
+  \}\par
+\par
+  .chat-input input[type="text"] \{\par
+    padding: 0.6rem 0.8rem;\par
+    font-size: 0.9rem;\par
+  \}\par
+\par
+  .file-input-label \{\par
+    font-size: 1.1rem;\par
+  \}\par
+\par
+  .send-btn \{\par
+    padding: 0.6rem 1rem;\par
+    font-size: 0.85rem;\par
+  \}\par
+\par
+  .whiteboard \{\par
+    min-height: 200px;\par
+  \}\par
+\par
+  .whiteboard-tools button \{\par
+    padding: 0.5rem 1rem;\par
+    font-size: 0.8rem;\par
+  \}\par
+\}\par
+</style>\par
+}
+ 

@@ -679,6 +679,36 @@ onMounted(async () => {
   }
 });
 
+let peer;
+
+onMounted(async () => {
+  peer = new RTCPeerConnection({
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      {
+        urls: "turn:global.turn.twilio.com:3478?transport=udp",
+        username: "your_twilio_username",
+        credential: "your_twilio_password"
+      }
+    ]
+  });
+
+  // Attach local stream
+  localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
+
+  // Handle remote stream
+  peer.ontrack = (event) => {
+    remoteVideo.value.srcObject = event.streams[0];
+  };
+
+  // ICE candidates
+  peer.onicecandidate = (event) => {
+    if (event.candidate) {
+      socket.emit("ice-candidate", { roomId, candidate: event.candidate });
+    }
+  };
+});
+
 onBeforeUnmount(() => {
   socket.disconnect();
   pc?.close();

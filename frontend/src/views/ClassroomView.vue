@@ -419,7 +419,7 @@ async function handleFileSelect(e) {
   const msg = {
     id: generateId(),
     roomId,
-    sender: auth.user?.name || userName.value,
+    sender: auth.user?.username || userName.value,
     type: 'file',
     file: { url: toAbsolute(res.data.url), name: res.data.name },
     timestamp: Date.now(),
@@ -427,11 +427,13 @@ async function handleFileSelect(e) {
   };
 
   messages.value.push(msg);
-  socket.emit('file-shared', { roomId, file: msg });
+  socket.emit('file-shared', { roomId, message: msg });
 
   emitReadForAll();
   e.target.value = '';
 }
+
+console.log("DEBUG sender:", auth.user?.username, auth.user?.name, userName.value);
 
 const joinRoom = () => {
   if (!auth.user?.name) return; // guard
@@ -548,7 +550,7 @@ watch(
   () => auth.user,
   async (val) => {
     if (val) {
-      userName.value = val.name;
+      userName.value = val.username;
       userRole.value = val.role;
 
       joinRoom();

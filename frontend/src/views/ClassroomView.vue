@@ -571,65 +571,62 @@ watch(
 
 
 
-// Lifecycle
-
+//Life cycle
 let peer;
 
 onMounted(async () => {
-  peer = new RTCPeerConnection({
-    iceServers: [
-      { urls: "stun:stun.l.google.com:19302" },
-      {
-        urls: "turn:global.turn.twilio.com:3478?transport=udp",
-        username: "your_twilio_username",
-        credential: "your_twilio_password"
-      }
-    ]
-  });
-
-  // Attach local stream
-  localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
-
-  // Handle remote stream
-  peer.ontrack = (event) => {
-    remoteVideo.value.srcObject = event.streams[0];
-  };
-
-  // ICE candidates
-  peer.onicecandidate = (event) => {
-    if (event.candidate) {
-      socket.emit("ice-candidate", { roomId, candidate: event.candidate });
-    }
-  };
-});
-
-onMounted(async () => {
   try {
-    // Init whiteboard
+    // ✅ Init whiteboard
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
     ctx = canvas.value.getContext('2d');
 
-    // Check if roomId is available
+    // ✅ Check if roomId is available
     if (!roomId) {
       console.warn('No session ID provided. Classroom features will be limited.');
       return;
     }
 
-    // Camera/mic only for tutor/child
+    // ✅ Camera/mic only for tutor/child
     if (['tutor', 'child'].includes(userRole)) {
       try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         localVideo.value.srcObject = localStream;
+
+        // ✅ Create peer connection after localStream is ready
+        peer = new RTCPeerConnection({
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            {
+              urls: "turn:global.turn.twilio.com:3478?transport=udp",
+              username: "your_twilio_username",   // replace with real Twilio credentials
+              credential: "your_twilio_password"
+            }
+          ]
+        });
+
+        // Attach local tracks
+        localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
+
+        // Handle remote stream
+        peer.ontrack = (event) => {
+          remoteVideo.value.srcObject = event.streams[0];
+        };
+
+        // ICE candidates
+        peer.onicecandidate = (event) => {
+          if (event.candidate) {
+            socket.emit("ice-candidate", { roomId, candidate: event.candidate });
+          }
+        };
       } catch (err) {
         console.warn('Camera/mic access denied:', err);
       }
     }
 
-    // Load chat history
+    // ✅ Load chat history
     try {
       const historyRes = await api.get(`/chat/${roomId}`);
-      // normalize file URLs in history
       const history = historyRes.data || [];
       const toAbsolute = (u) => {
         if (!u) return u;
@@ -646,24 +643,24 @@ onMounted(async () => {
       console.warn('Could not load chat history:', err);
     }
 
-    // WebRTC signaling
+    // ✅ WebRTC signaling
     socket.on('offer', async ({ offer }) => {
-      if (!pc) createPeerConnection();
-      await pc.setRemoteDescription(offer);
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
+      if (!peer) return;
+      await peer.setRemoteDescription(offer);
+      const answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
       socket.emit('answer', { roomId, answer });
     });
 
     socket.on('answer', async ({ answer }) => {
-      await pc?.setRemoteDescription(answer);
+      await peer?.setRemoteDescription(answer);
     });
 
     socket.on('ice-candidate', async ({ candidate }) => {
-      await pc?.addIceCandidate(candidate);
+      await peer?.addIceCandidate(candidate);
     });
 
-    // Chat
+    // ✅ Chat
     socket.on('chat-message', (msg) => {
       messages.value.push(msg);
       emitReadForAll();
@@ -679,13 +676,12 @@ onMounted(async () => {
       });
     });
 
-    // Whiteboard sync
+    // ✅ Whiteboard sync
     socket.on('whiteboard-draw', ({ line }) => drawLine(line));
     socket.on('whiteboard-clear', () => ctx.clearRect(0, 0, canvas.value.width, canvas.value.height));
 
-    // File sharing
+    // ✅ File sharing
     socket.on('file-shared', ({ file }) => {
-      // ensure file URLs are absolute
       const toAbsolute = (u) => {
         if (!u) return u;
         if (u.startsWith('http')) return u;
@@ -700,18 +696,18 @@ onMounted(async () => {
       emitReadForAll();
     });
 
-    // Raise hand
+    // ✅ Raise hand
     socket.on('raise-hand', ({ userName: user, raised }) => {
       console.log(`${user} raised hand: ${raised}`);
     });
 
-    // Auto-start call for tutor/child
+    // ✅ Auto-start call for tutor/child
     if (['tutor', 'child'].includes(userRole.value)) startCall();
+
   } catch (err) {
     console.error('Error mounting classroom:', err);
   }
 });
-
 
 onBeforeUnmount(() => {
   socket.disconnect();

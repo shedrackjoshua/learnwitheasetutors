@@ -10,6 +10,7 @@ import http from 'http';
 import { Server } from 'socket.io';
 import fs from 'fs';
 import crypto from 'crypto';
+import classroomRoutes from './routes/classroomRoutes.js';
 
 // Middleware & Utils
 import { ensureAdminUser } from './utils/seedAdmin.js';
@@ -106,6 +107,7 @@ app.use('/api/tutors', ratingRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/assignments', assignmentRoutes);
+app.use("/api/classroom", classroomRoutes);
 
 // Contacts CRUD
 app.get('/api/contacts', async (req, res) => {
@@ -409,6 +411,7 @@ io.on('connection', (socket) => {
 ------------------------------------------------------- */
 
 const PORT = process.env.PORT || 5000;
+
 
 const MONGO_URI =
   process.env.MongoDB_URI ||

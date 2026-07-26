@@ -17,4 +17,20 @@ api.interceptors.request.use(
   error => Promise.reject(error)
 );
 
+// Classroom endpoints
+export async function getTurnCredentials() {
+  const res = await api.get("/classroom/turn-credentials");
+  return res.data;
+}
+
+export async function joinClassroom(classroomId, userId) {
+  const res = await api.post("/classroom/join", { classroomId, userId });
+  return res.data;
+}
+
+export async function leaveClassroom(classroomId, userId) {
+  const res = await api.post("/classroom/leave", { classroomId, userId });
+  return res.data;
+}
+
 export default api;

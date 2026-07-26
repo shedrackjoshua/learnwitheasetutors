@@ -157,6 +157,7 @@ import { io } from 'socket.io-client';
 import { useRoute } from 'vue-router';
 import axios from 'axios';
 import { useAuthStore } from '../store/auth';
+import { getTurnCredentials, joinClassroom, leaveClassroom } from '../services/api';
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -183,6 +184,7 @@ const userRole = ref('');
 
 // socket is initialized above (use backendBase when provided)
 
+let peer = null;
 let pc = null;
 let localStream = null;
 let screenStream = null;
@@ -433,14 +435,14 @@ async function handleFileSelect(e) {
   e.target.value = '';
 }
 
-console.log("DEBUG sender:", auth.user?.username, auth.user?.name, userName.value);
+console.log("DEBUG sender:", auth.user?.username, userName.value);
 
 const joinRoom = () => {
-  if (!auth.user?.name) return; // guard
+  if (!auth.user?.username) return; // guard
 
   socket.emit('join-room', {
     roomId,
-    userName: auth.user.name,
+    userName: auth.user.username,
     role: auth.user.role
   });
 };
@@ -570,61 +572,61 @@ watch(
 );
 
 
+// -----------------------------------------------------
+// START CLASSROOM (Twilio TURN + local media + tracks)
+// -----------------------------------------------------
+async function startClassroom(roomId, userName) {
+  // 1. Fetch ephemeral ICE servers from backend (Twilio)
+  const iceServers = await getTurnCredentials();
+  console.log("ICE SERVERS RECEIVED:", iceServers);
 
-//Life cycle
-let peer;
+  // 2. Create peer connection using Twilio ICE servers
+  peer = new RTCPeerConnection({ iceServers });
 
+  // 3. Get local media
+  localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  localVideo.value.srcObject = localStream;
+
+  // 4. Attach tracks
+  localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
+
+  // 5. Remote stream handler
+  peer.ontrack = (event) => {
+    remoteVideo.value.srcObject = event.streams[0];
+  };
+
+  // 6. ICE candidate handler
+  peer.onicecandidate = (event) => {
+    if (event.candidate) {
+      socket.emit("ice-candidate", { roomId, candidate: event.candidate });
+    }
+  };
+
+  // 7. Notify backend user joined
+  await joinClassroom(roomId, userName);
+}
+
+// -----------------------------------------------------
+// LIFECYCLE
+// -----------------------------------------------------
 onMounted(async () => {
   try {
-    // ✅ Init whiteboard
+    // Whiteboard init
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
     ctx = canvas.value.getContext('2d');
 
-    // ✅ Check if roomId is available
     if (!roomId) {
-      console.warn('No session ID provided. Classroom features will be limited.');
+      console.warn("No session ID provided.");
       return;
     }
 
-    // ✅ Camera/mic only for tutor/child
-    if (['tutor', 'child'].includes(userRole)) {
-      try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        localVideo.value.srcObject = localStream;
-
-        // ✅ Create peer connection after localStream is ready
-        peer = new RTCPeerConnection({
-          iceServers: [
-            { urls: "stun:stun.l.google.com:19302" },
-            {
-              urls: "turn:global.turn.twilio.com:3478?transport=udp",
-              username: "your_twilio_username",   // replace with real Twilio credentials
-              credential: "your_twilio_password"
-            }
-          ]
-        });
-
-        // Attach local tracks
-        localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
-
-        // Handle remote stream
-        peer.ontrack = (event) => {
-          remoteVideo.value.srcObject = event.streams[0];
-        };
-
-        // ICE candidates
-        peer.onicecandidate = (event) => {
-          if (event.candidate) {
-            socket.emit("ice-candidate", { roomId, candidate: event.candidate });
-          }
-        };
-      } catch (err) {
-        console.warn('Camera/mic access denied:', err);
-      }
+    // Start camera + WebRTC only for tutor/child
+    if (['tutor', 'child'].includes(userRole.value)) {
+      await startClassroom(roomId, auth.user.username);
     }
 
-    // ✅ Load chat history
+    // Load chat history
     try {
       const historyRes = await api.get(`/chat/${roomId}`);
       const history = historyRes.data || [];
@@ -640,10 +642,10 @@ onMounted(async () => {
         return m;
       });
     } catch (err) {
-      console.warn('Could not load chat history:', err);
+      console.warn("Could not load chat history:", err);
     }
 
-    // ✅ WebRTC signaling
+    // WebRTC signaling
     socket.on('offer', async ({ offer }) => {
       if (!peer) return;
       await peer.setRemoteDescription(offer);
@@ -660,7 +662,7 @@ onMounted(async () => {
       await peer?.addIceCandidate(candidate);
     });
 
-    // ✅ Chat
+    // Chat
     socket.on('chat-message', (msg) => {
       messages.value.push(msg);
       emitReadForAll();
@@ -676,11 +678,11 @@ onMounted(async () => {
       });
     });
 
-    // ✅ Whiteboard sync
+    // Whiteboard sync
     socket.on('whiteboard-draw', ({ line }) => drawLine(line));
     socket.on('whiteboard-clear', () => ctx.clearRect(0, 0, canvas.value.width, canvas.value.height));
 
-    // ✅ File sharing
+    // File sharing
     socket.on('file-shared', ({ file }) => {
       const toAbsolute = (u) => {
         if (!u) return u;
@@ -696,24 +698,27 @@ onMounted(async () => {
       emitReadForAll();
     });
 
-    // ✅ Raise hand
+    // Raise hand
     socket.on('raise-hand', ({ userName: user, raised }) => {
       console.log(`${user} raised hand: ${raised}`);
     });
 
-    // ✅ Auto-start call for tutor/child
+    // Auto-start call
     if (['tutor', 'child'].includes(userRole.value)) startCall();
 
   } catch (err) {
-    console.error('Error mounting classroom:', err);
+    console.error("Error mounting classroom:", err);
   }
 });
 
+// -----------------------------------------------------
+// CLEANUP
+// -----------------------------------------------------
 onBeforeUnmount(() => {
   socket.disconnect();
-  pc?.close();
-  localStream?.getTracks().forEach((t) => t.stop());
-  screenStream?.getTracks().forEach((t) => t.stop());
+  peer?.close();
+  localStream?.getTracks().forEach(t => t.stop());
+  screenStream?.getTracks().forEach(t => t.stop());
   window.removeEventListener('resize', resizeCanvas);
 });
 </script>

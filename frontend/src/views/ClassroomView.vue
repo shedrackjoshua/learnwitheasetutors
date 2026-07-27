@@ -645,24 +645,63 @@ onMounted(async () => {
       console.warn("Could not load chat history:", err);
     }
 
-    // WebRTC signaling
+    // --- WEBRTC SIGNALING (FIXED ROLE-BASED VERSION) ---
+
+    // Tutor creates the offer
+    if (userRole.value === 'tutor') {
+      startCall();
+    }
+
+    // Child waits for offer and creates answer
     socket.on('offer', async ({ offer }) => {
       if (!peer) return;
-      await peer.setRemoteDescription(offer);
-      const answer = await peer.createAnswer();
-      await peer.setLocalDescription(answer);
-      socket.emit('answer', { roomId, answer });
+
+      // Only child should answer
+      if (userRole.value !== 'child') return;
+
+      try {
+        await peer.setRemoteDescription(offer);
+
+        const answer = await peer.createAnswer();
+        await peer.setLocalDescription(answer);
+
+        socket.emit('answer', { roomId, answer });
+      } catch (err) {
+        console.error("Error handling offer:", err);
+      }
     });
 
+    // Tutor receives the answer
     socket.on('answer', async ({ answer }) => {
-      await peer?.setRemoteDescription(answer);
+      if (!peer) return;
+
+      // Only tutor should set remote answer
+      if (userRole.value !== 'tutor') return;
+
+      try {
+        await peer.setRemoteDescription(answer);
+      } catch (err) {
+        console.error("Error handling answer:", err);
+      }
     });
 
+    // ICE candidates (guarded)
     socket.on('ice-candidate', async ({ candidate }) => {
-      await peer?.addIceCandidate(candidate);
+      if (!peer) return;
+
+      try {
+        if (!peer.remoteDescription) {
+          console.warn("ICE candidate received before remoteDescription, skipping");
+          return;
+        }
+
+        await peer.addIceCandidate(candidate);
+      } catch (err) {
+        console.error("Error adding ICE candidate:", err);
+      }
     });
 
-    // Chat
+    // --- CHAT ---
     socket.on('chat-message', (msg) => {
       messages.value.push(msg);
       emitReadForAll();
@@ -678,11 +717,13 @@ onMounted(async () => {
       });
     });
 
-    // Whiteboard sync
+    // --- WHITEBOARD ---
     socket.on('whiteboard-draw', ({ line }) => drawLine(line));
-    socket.on('whiteboard-clear', () => ctx.clearRect(0, 0, canvas.value.width, canvas.value.height));
+    socket.on('whiteboard-clear', () => {
+      ctx.clearRect(0, 0, canvas.value.width, canvas.value.height);
+    });
 
-    // File sharing
+    // --- FILE SHARING ---
     socket.on('file-shared', ({ file }) => {
       const toAbsolute = (u) => {
         if (!u) return u;
@@ -698,18 +739,15 @@ onMounted(async () => {
       emitReadForAll();
     });
 
-    // Raise hand
+    // --- RAISE HAND ---
     socket.on('raise-hand', ({ userName: user, raised }) => {
       console.log(`${user} raised hand: ${raised}`);
     });
 
-    // Auto-start call
-    if (['tutor', 'child'].includes(userRole.value)) startCall();
-
   } catch (err) {
     console.error("Error mounting classroom:", err);
   }
-});
+}); // ✅ CLOSE onMounted PROPERLY
 
 // -----------------------------------------------------
 // CLEANUP

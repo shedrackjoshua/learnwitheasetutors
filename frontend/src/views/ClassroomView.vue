@@ -157,7 +157,7 @@ import { io } from 'socket.io-client';
 import { useRoute } from 'vue-router';
 import axios from 'axios';
 import { useAuthStore } from '../store/auth';
-import { getTurnCredentials, joinClassroom, leaveClassroom } from '../services/api';
+import { getTurnCredentials, joinClassroom, leaveClassroom as leaveClassroomApi } from '../services/api';
 
 const route = useRoute();
 const auth = useAuthStore();
@@ -184,10 +184,11 @@ const userRole = ref('');
 
 // socket is initialized above (use backendBase when provided)
 
-let peer = null;
 let pc = null;
 let localStream = null;
 let screenStream = null;
+let pendingCandidates = [];
+let hasStartedClassroom = false;
 
 const isSharingScreen = ref(false);
 const isRecording = ref(false);
@@ -246,10 +247,9 @@ function formatTime(ts) {
 }
 
 // WebRTC
-function createPeerConnection() {
-  pc = new RTCPeerConnection({
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-  });
+function createPeerConnection(iceServers = [{ urls: 'stun:stun.l.google.com:19302' }]) {
+  if (pc) return pc;
+  pc = new RTCPeerConnection({ iceServers });
 
   pc.onicecandidate = (event) => {
     if (event.candidate) {
@@ -258,12 +258,14 @@ function createPeerConnection() {
   };
 
   pc.ontrack = (event) => {
-    remoteVideo.value.srcObject = event.streams[0];
+    if (remoteVideo.value) remoteVideo.value.srcObject = event.streams[0];
   };
 
   if (localStream) {
     localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
   }
+
+  return pc;
 }
 
 async function startCall() {
@@ -542,68 +544,156 @@ function raiseHand() {
   });
 }
 
-// Auto-scroll chat
-watch(messages, async () => {
-  await nextTick();
-  messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
-});
 
 watch(
   () => auth.user,
   async (val) => {
-    if (val) {
-      userName.value = val.username;
-      userRole.value = val.role;
+    if (!val) return;
 
-      joinRoom();
+    userName.value = val.username;
+    userRole.value = val.role;
 
-      // Start camera AFTER role is known
-      if (['tutor', 'child'].includes(userRole.value)) {
-        try {
-          localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    joinRoom();
+
+    // Start camera AFTER role is known (for UI preview only)
+    if (['tutor', 'child'].includes(userRole.value)) {
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        if (localVideo.value) {
           localVideo.value.srcObject = localStream;
-        } catch (err) {
-          console.warn('Camera/mic access denied:', err);
         }
+      } catch (err) {
+        console.warn('Camera/mic access denied:', err);
       }
     }
   },
   { immediate: true }
 );
 
-
 // -----------------------------------------------------
 // START CLASSROOM (Twilio TURN + local media + tracks)
 // -----------------------------------------------------
 async function startClassroom(roomId, userName) {
+  if (hasStartedClassroom) return;
+  hasStartedClassroom = true;
+
   // 1. Fetch ephemeral ICE servers from backend (Twilio)
-  const iceServers = await getTurnCredentials();
-  console.log("ICE SERVERS RECEIVED:", iceServers);
+  const iceServers = await getTurnCredentials().catch(() => [
+    { urls: 'stun:stun.l.google.com:19302' }
+  ]);
+  console.log('ICE SERVERS RECEIVED:', iceServers);
 
-  // 2. Create peer connection using Twilio ICE servers
-  peer = new RTCPeerConnection({ iceServers });
+  // 2. Create peer connection with ICE servers
+  pendingCandidates = [];
+  if (!pc) createPeerConnection(iceServers);
 
-  // 3. Get local media
-  localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-  localVideo.value.srcObject = localStream;
-
-  // 4. Attach tracks
-  localStream.getTracks().forEach(track => peer.addTrack(track, localStream));
-
-  // 5. Remote stream handler
-  peer.ontrack = (event) => {
-    remoteVideo.value.srcObject = event.streams[0];
-  };
-
-  // 6. ICE candidate handler
-  peer.onicecandidate = (event) => {
-    if (event.candidate) {
-      socket.emit("ice-candidate", { roomId, candidate: event.candidate });
+  // 3. Get local media (for actual WebRTC) if not already present
+  if (!localStream) {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    if (localVideo.value) {
+      localVideo.value.srcObject = localStream;
     }
+
+    // Attach local tracks
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+  }
+
+  // 4. Remote stream and ICE handling already wired in createPeerConnection
+
+  // 5. Connection state logging
+  pc.oniceconnectionstatechange = () => {
+    console.log('ICE connection state:', pc.iceConnectionState);
   };
 
-  // 7. Notify backend user joined
+  // 6. Notify backend user joined
   await joinClassroom(roomId, userName);
+
+  // 7. If this client is a child, tell tutors we're ready to receive an offer
+  if (userRole.value === 'child') {
+    console.log('child ready -> emitting child-ready');
+    socket.emit('child-ready', { roomId, userName });
+  }
+
+  // 8. Tutor waits for child-ready before creating offer
+  socket.off('child-ready');
+  socket.on('child-ready', async (data) => {
+    if (userRole.value !== 'tutor') return;
+    if (!pc) return;
+
+    console.log('child-ready received:', data);
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    socket.emit('offer', { roomId, offer });
+  });
+}
+
+// -----------------------------------------------------
+// SIGNALING HANDLERS (single set, no duplication)
+// -----------------------------------------------------
+
+// Child receives offer and replies with answer
+function registerSignalingHandlers() {
+  socket.off('offer');
+  socket.off('answer');
+  socket.off('ice-candidate');
+
+  socket.on('offer', async ({ offer }) => {
+    if (userRole.value !== 'child') return;
+
+    if (!pc) createPeerConnection();
+
+    try {
+      await pc.setRemoteDescription(offer);
+
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      socket.emit('answer', { roomId, answer });
+    } catch (err) {
+      console.error('Error handling offer:', err);
+    }
+  });
+
+  // Tutor receives the answer and flushes queued ICE
+  socket.on('answer', async ({ answer }) => {
+    if (userRole.value !== 'tutor') return;
+
+    if (!pc) {
+      console.warn('Answer received but pc missing; creating pc');
+      createPeerConnection();
+    }
+
+    try {
+      await pc.setRemoteDescription(answer);
+
+      for (const c of pendingCandidates) {
+        await pc.addIceCandidate(c);
+      }
+      pendingCandidates = [];
+    } catch (err) {
+      console.error('Error handling answer:', err);
+    }
+  });
+
+  // ICE candidates (queued until remoteDescription exists)
+  socket.on('ice-candidate', async ({ candidate }) => {
+    if (!pc) {
+      console.warn('ICE candidate received but pc missing; creating pc and queueing');
+      createPeerConnection();
+    }
+
+    try {
+      if (pc.remoteDescription && pc.remoteDescription.type) {
+        await pc.addIceCandidate(candidate);
+      } else {
+        console.warn('ICE candidate received before remoteDescription, queuing');
+        pendingCandidates.push(candidate);
+      }
+    } catch (err) {
+      console.error('Error adding ICE candidate:', err);
+    }
+  });
 }
 
 // -----------------------------------------------------
@@ -617,16 +707,17 @@ onMounted(async () => {
     ctx = canvas.value.getContext('2d');
 
     if (!roomId) {
-      console.warn("No session ID provided.");
+      console.warn('No session ID provided.');
       return;
     }
 
-    // Start camera + WebRTC only for tutor/child
+    // Start WebRTC only for tutor/child
     if (['tutor', 'child'].includes(userRole.value)) {
       await startClassroom(roomId, auth.user.username);
+      registerSignalingHandlers();
     }
 
-    // Load chat history
+    // --- CHAT HISTORY ---
     try {
       const historyRes = await api.get(`/chat/${roomId}`);
       const history = historyRes.data || [];
@@ -642,64 +733,8 @@ onMounted(async () => {
         return m;
       });
     } catch (err) {
-      console.warn("Could not load chat history:", err);
+      console.warn('Could not load chat history:', err);
     }
-
-    // --- WEBRTC SIGNALING (FIXED ROLE-BASED VERSION) ---
-
-    // Tutor creates the offer
-    if (userRole.value === 'tutor') {
-      startCall();
-    }
-
-    // Child waits for offer and creates answer
-    socket.on('offer', async ({ offer }) => {
-      if (!peer) return;
-
-      // Only child should answer
-      if (userRole.value !== 'child') return;
-
-      try {
-        await peer.setRemoteDescription(offer);
-
-        const answer = await peer.createAnswer();
-        await peer.setLocalDescription(answer);
-
-        socket.emit('answer', { roomId, answer });
-      } catch (err) {
-        console.error("Error handling offer:", err);
-      }
-    });
-
-    // Tutor receives the answer
-    socket.on('answer', async ({ answer }) => {
-      if (!peer) return;
-
-      // Only tutor should set remote answer
-      if (userRole.value !== 'tutor') return;
-
-      try {
-        await peer.setRemoteDescription(answer);
-      } catch (err) {
-        console.error("Error handling answer:", err);
-      }
-    });
-
-    // ICE candidates (guarded)
-    socket.on('ice-candidate', async ({ candidate }) => {
-      if (!peer) return;
-
-      try {
-        if (!peer.remoteDescription) {
-          console.warn("ICE candidate received before remoteDescription, skipping");
-          return;
-        }
-
-        await peer.addIceCandidate(candidate);
-      } catch (err) {
-        console.error("Error adding ICE candidate:", err);
-      }
-    });
 
     // --- CHAT ---
     socket.on('chat-message', (msg) => {
@@ -745,17 +780,28 @@ onMounted(async () => {
     });
 
   } catch (err) {
-    console.error("Error mounting classroom:", err);
+    console.error('Error mounting classroom:', err);
   }
-}); // ✅ CLOSE onMounted PROPERLY
+});
 
 // -----------------------------------------------------
 // CLEANUP
 // -----------------------------------------------------
+function leaveClassroom() {
+  if (pc) {
+    pc.close();
+    pc = null;
+  }
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+    localStream = null;
+  }
+  socket.emit('leave-room', { roomId, userName: userName.value });
+}
+
 onBeforeUnmount(() => {
+  leaveClassroom();
   socket.disconnect();
-  peer?.close();
-  localStream?.getTracks().forEach(t => t.stop());
   screenStream?.getTracks().forEach(t => t.stop());
   window.removeEventListener('resize', resizeCanvas);
 });
@@ -1045,8 +1091,8 @@ video {
 
 @keyframes pulse {
 
-  0%,
-  100% {
+  0 %,
+  100 % {
     transform: scale(1);
   }
 
@@ -1534,7 +1580,7 @@ video {
   }
 }
 
-@media (max-width: 480px) {
+.@media (max-width: 480px) {
   .classroom {
     padding: 0.75rem;
     gap: 0.75rem;

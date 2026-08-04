@@ -359,6 +359,11 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('offer', { offer, from: socket.id });
   });
 
+  socket.on('child-ready', ({ roomId, userName }) => {
+    // Relay child-ready to other sockets in the room (tutors)
+    socket.to(roomId).emit('child-ready', { userId: socket.id, userName });
+  });
+
   socket.on('answer', ({ roomId, answer }) => {
     socket.to(roomId).emit('answer', { answer, from: socket.id });
   });
@@ -419,26 +424,68 @@ const MONGO_URI =
   process.env.DB_URI ||
   process.env.DATABASE_URL;
 
-if (!MONGO_URI) {
-  console.error('FATAL: MongoDB URI is not set.');
-  process.exit(1);
+// Normalize and validate the MongoDB URI
+const mongoUriRaw = MONGO_URI;
+let mongoUriTrimmed = String(mongoUriRaw ?? '').trim();
+
+// If an injector set the literal string 'null', try to read the original value from the .env file directly
+if (!mongoUriTrimmed || mongoUriTrimmed.toLowerCase() === 'null') {
+  try {
+    const envPath = path.join(__dirname, '.env');
+    if (fs.existsSync(envPath)) {
+      const envContent = fs.readFileSync(envPath, 'utf8');
+      const parsed = dotenv.parse(envContent);
+      const fallback = parsed.MongoDB_URI || parsed.MONGODB_URI || parsed.MONGO_URI || parsed.DB_URI || parsed.DATABASE_URL;
+      if (fallback) {
+        mongoUriTrimmed = String(fallback).trim();
+        console.log('NOTICE: Using Mongo URI from .env as fallback (masked).');
+      }
+    }
+  } catch (e) {
+    // ignore parsing errors here; handled by subsequent checks
+  }
 }
 
-mongoose.connect(MONGO_URI)
-  .then(async () => {
-    console.log('Connected to MongoDB');
+// Masked debug (do not print credentials)
+const maskedDebug = mongoUriTrimmed
+  ? (mongoUriTrimmed.length > 40 ? mongoUriTrimmed.slice(0, 30) + '...' + mongoUriTrimmed.slice(-7) : mongoUriTrimmed)
+  : '<empty>';
+console.log('DEBUG MONGO_URI =', JSON.stringify(maskedDebug));
 
-    try {
-      await ensureAdminUser();
-    } catch (err) {
-      console.error('Error ensuring admin user:', err);
-    }
-
-    server.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
-    });
-  })
-  .catch((err) => {
-    console.error('Failed to connect to MongoDB', err);
+if (!mongoUriTrimmed || mongoUriTrimmed.toLowerCase() === 'null') {
+  // In production we must exit. In local development allow the server to start without MongoDB
+  if (process.env.NODE_ENV === 'production') {
+    console.error('FATAL: MongoDB URI is missing or set to the literal string "null". Please correct your injector or .env file. Value read (masked):', maskedDebug);
     process.exit(1);
-  });
+  } else {
+    console.warn('WARNING: MongoDB URI is missing. Starting server without DB for local development.');
+    server.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT} (no DB connected - development fallback)`);
+    });
+  }
+}
+else {
+  if (!/^mongodb(\+srv)?:\/\//.test(mongoUriTrimmed)) {
+    console.error('FATAL: MongoDB URI appears malformed (must start with mongodb:// or mongodb+srv://). Value read (masked):', maskedDebug);
+    process.exit(1);
+  }
+
+  mongoose.connect(mongoUriTrimmed)
+    .then(async () => {
+      console.log('Connected to MongoDB');
+
+      try {
+        await ensureAdminUser();
+      } catch (err) {
+        console.error('Error ensuring admin user:', err);
+      }
+
+      server.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+      });
+    })
+    .catch((err) => {
+      console.error('Failed to connect to MongoDB', err);
+      process.exit(1);
+    });
+}

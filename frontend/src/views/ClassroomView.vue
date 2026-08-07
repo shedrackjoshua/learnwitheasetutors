@@ -1,5 +1,5 @@
 <template>
-  <div class="classroom" :class="{ 'minimize-video': videosMinimized }">
+  <div class="classroom" :class="{ 'minimize-video': videosMinimized, 'remote-active': remoteScreenActive }">
     <!-- LEFT SIDE -->
     <div class="left-pane" :style="{ flex: chatMinimized ? '3' : (videosMinimized ? '3' : '2') }">
       <div class="header-section">
@@ -9,8 +9,32 @@
         </button>
       </div>
 
+      <!-- REMOTE SCREEN (full) -->
+      <div v-show="remoteScreenActive" class="remote-screen-full">
+        <div class="screen-label">{{ remoteScreenOwner }}'s screen</div>
+        <button class="exit-fullscreen" @click="remoteScreenActive = false">×</button>
+        <video ref="remoteVideoFull" id="remoteVideoFull" autoplay playsinline controls></video>
+        <div v-if="remoteScreenBlank" class="remote-blank-overlay">
+          <div>No frames detected from shared screen.</div>
+          <button @click="renegotiate">Retry (renegotiate)</button>
+        </div>
+
+        <!-- SIDE VIDEO STRIP (visible while someone shares their screen) -->
+        <div v-show="remoteScreenActive" class="side-videos" aria-hidden="false">
+          <div class="side-video-tile">
+            <div class="video-label">You</div>
+            <video ref="sideLocalVideo" autoplay playsinline muted></video>
+          </div>
+
+          <div class="side-video-tile">
+            <div class="video-label">Remote</div>
+            <video ref="sideRemoteSmall" autoplay playsinline></video>
+          </div>
+        </div>
+      </div>
+
       <!-- VIDEO GRID -->
-      <div v-show="!videosMinimized" class="videos" :class="{ minimized: videosMinimized }">
+      <div v-show="!videosMinimized && !remoteScreenActive" class="videos" :class="{ minimized: videosMinimized }">
         <!-- Local video -->
         <div class="video-tile">
           <div class="video-label">
@@ -24,7 +48,7 @@
           <div class="video-label">
             {{ userRole === 'tutor' ? 'Child' : userRole === 'child' ? 'Tutor' : 'Other' }}
           </div>
-          <video ref="remoteVideo" autoplay playsinline></video>
+          <video ref="remoteVideoTile" id="remoteVideoTile" autoplay playsinline></video>
         </div>
       </div>
       <!-- WHITEBOARD -->
@@ -175,10 +199,14 @@ const roomId = route.params.sessionId;
 
 
 const localVideo = ref(null);
-const remoteVideo = ref(null);
+const remoteVideoFull = ref(null);
+const remoteVideoTile = ref(null);
+const lastRemoteStreamId = ref(null);
 const canvas = ref(null);
 const messagesContainer = ref(null);
 const fileInput = ref(null);
+const sideLocalVideo = ref(null);
+const sideRemoteSmall = ref(null);
 const userName = ref('');
 const userRole = ref('');
 
@@ -192,6 +220,8 @@ let hasStartedClassroom = false;
 
 const isSharingScreen = ref(false);
 const isRecording = ref(false);
+const remoteScreenActive = ref(false);
+const remoteScreenOwner = ref('');
 let recorder = null;
 let recordedChunks = [];
 
@@ -199,6 +229,46 @@ const messages = ref([]);
 const chatMessage = ref('');
 const typingText = ref('');
 let typingTimeout = null;
+const remoteScreenBlank = ref(false);
+
+// check if a video element receives any non-empty frames within timeoutMs
+function checkRemoteFrames(videoEl, timeoutMs = 1000) {
+  return new Promise((resolve) => {
+    if (!videoEl) return resolve(false);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    let observed = false;
+    const start = Date.now();
+
+    function sample() {
+      if (videoEl.videoWidth === 0 || videoEl.videoHeight === 0) {
+        if (Date.now() - start > timeoutMs) return resolve(false);
+        return requestAnimationFrame(sample);
+      }
+      canvas.width = videoEl.videoWidth;
+      canvas.height = videoEl.videoHeight;
+      try {
+        ctx.drawImage(videoEl, 0, 0);
+        const data = ctx.getImageData(0, 0, Math.min(10, canvas.width), Math.min(10, canvas.height)).data;
+        // If any pixel channel > 0, assume we have frames
+        for (let i = 0; i < data.length; i++) {
+          if (data[i] !== 0) {
+            observed = true;
+            break;
+          }
+        }
+      } catch (e) {
+        // drawImage may throw until frame available
+      }
+
+      if (observed) return resolve(true);
+      if (Date.now() - start > timeoutMs) return resolve(false);
+      requestAnimationFrame(sample);
+    }
+
+    sample();
+  });
+}
 
 // Whiteboard
 let ctx = null;
@@ -246,10 +316,27 @@ function formatTime(ts) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+// Perform an explicit offer/answer exchange (renegotiation)
+async function renegotiate(iceRestart = false) {
+  if (!pc) return;
+  try {
+    console.log('Starting renegotiation... iceRestart=', iceRestart);
+    const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true, iceRestart });
+    await pc.setLocalDescription(offer);
+    socket.emit('offer', { roomId, offer, renegotiate: true, iceRestart });
+  } catch (err) {
+    console.error('Renegotiation failed:', err);
+    throw err;
+  }
+}
+
 // WebRTC
 function createPeerConnection(iceServers = [{ urls: 'stun:stun.l.google.com:19302' }]) {
   if (pc) return pc;
   pc = new RTCPeerConnection({ iceServers });
+
+  // expose for debugging in browser console
+  try { window.__pc = pc; } catch (e) { }
 
   pc.onicecandidate = (event) => {
     if (event.candidate) {
@@ -257,9 +344,67 @@ function createPeerConnection(iceServers = [{ urls: 'stun:stun.l.google.com:1930
     }
   };
 
-  pc.ontrack = (event) => {
-    if (remoteVideo.value) remoteVideo.value.srcObject = event.streams[0];
+  // track ICE/connection state and attempt ICE restart if needed
+  let lastIceRestartAt = 0;
+  const ICE_RESTART_COOLDOWN = 10 * 1000; // 10 seconds
+
+  pc.oniceconnectionstatechange = () => {
+    console.log('ICE connection state:', pc.iceConnectionState);
+    const s = pc.iceConnectionState;
+    if ((s === 'disconnected' || s === 'failed') && Date.now() - lastIceRestartAt > ICE_RESTART_COOLDOWN) {
+      console.warn('ICE disconnected/failed — attempting ICE restart');
+      lastIceRestartAt = Date.now();
+      // try ICE restart by creating an offer with iceRestart:true
+      renegotiate(true).catch((e) => console.error('ICE restart renegotiate failed:', e));
+    }
   };
+
+  pc.onconnectionstatechange = () => {
+    console.log('PC connection state:', pc.connectionState);
+  };
+
+  pc.ontrack = (event) => {
+    console.log('pc.ontrack event:', event.streams?.[0]);
+    const s = event.streams[0];
+    try { window.__remoteStream = s; } catch (e) { }
+    // avoid reattaching same stream repeatedly which causes play interruptions
+    const streamId = s.id || (s.getTracks()[0] && s.getTracks()[0].id) || null;
+    if (streamId === lastRemoteStreamId.value) {
+      console.log('ontrack: same stream id, skipping reattach');
+    } else {
+      lastRemoteStreamId.value = streamId;
+      // attach to both elements (the visible one will play)
+      if (remoteVideoFull.value) remoteVideoFull.value.srcObject = s;
+      if (remoteVideoTile.value) remoteVideoTile.value.srcObject = s;
+      if (sideRemoteSmall.value) sideRemoteSmall.value.srcObject = s;
+    }
+
+    const activeEl = getRemoteVideoEl();
+    if (activeEl) {
+      activeEl.addEventListener('loadedmetadata', () => {
+        console.log(activeEl.id, 'loadedmetadata', { videoWidth: activeEl.videoWidth, videoHeight: activeEl.videoHeight });
+      });
+      activeEl.addEventListener('playing', () => console.log(activeEl.id, 'playing'));
+      activeEl.addEventListener('pause', () => console.log(activeEl.id, 'paused'));
+
+      try {
+        const p = activeEl.play();
+        if (p && p.then) p.then(() => console.log(activeEl.id, 'play() succeeded')).catch((e) => console.warn(activeEl.id, 'play() failed:', e));
+      } catch (e) { console.warn('play exception', e); }
+
+      checkRemoteFrames(activeEl, 2000).then((hasFrames) => {
+        console.log('checkRemoteFrames result:', hasFrames);
+        remoteScreenBlank.value = !hasFrames;
+      }).catch((e) => console.error('checkRemoteFrames error:', e));
+    }
+  };
+
+  function getRemoteVideoEl() {
+    // prefer full screen element when active
+    if (remoteScreenActive.value && remoteVideoFull.value) return remoteVideoFull.value;
+    if (remoteVideoTile.value) return remoteVideoTile.value;
+    return null;
+  }
 
   if (localStream) {
     localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
@@ -299,12 +444,29 @@ async function startScreenShare() {
     sender = pc.addTrack(dummy, localStream);
   }
 
-  await sender.replaceTrack(screenTrack);
+  try {
+    console.log('Attempting replaceTrack for screen share. Senders:', pc.getSenders().map(s => ({ id: s.track?.id, kind: s.track?.kind })));
+    await sender.replaceTrack(screenTrack);
+  } catch (err) {
+    console.warn('replaceTrack failed, falling back to addTrack:', err);
+    try {
+      pc.removeTrack(sender);
+    } catch (e) { }
+    pc.addTrack(screenTrack, screenStream);
+  }
 
   localVideo.value.srcObject = screenStream;
   isSharingScreen.value = true;
 
-  screenTrack.onended = stopScreenShare;
+  // notify others that this user started screen sharing (UI state)
+  socket.emit('screen-share-start', { roomId, userName: userName.value, role: userRole.value });
+
+  // renegotiate to ensure remote peer receives new track
+  await renegotiate();
+
+  screenTrack.onended = async () => {
+    await stopScreenShare();
+  };
 }
 
 async function stopScreenShare() {
@@ -317,11 +479,22 @@ async function stopScreenShare() {
   const sender = pc.getSenders().find((s) => s.track?.kind === 'video');
 
   if (sender && cameraTrack) {
-    await sender.replaceTrack(cameraTrack);
+    try {
+      await sender.replaceTrack(cameraTrack);
+    } catch (err) {
+      console.warn('replaceTrack on stop failed, falling back to addTrack:', err);
+      try { pc.removeTrack(sender); } catch (e) { }
+      pc.addTrack(cameraTrack, localStream);
+    }
   }
 
   localVideo.value.srcObject = localStream;
   isSharingScreen.value = false;
+  // notify others that screen sharing stopped
+  socket.emit('screen-share-stop', { roomId, userName: userName.value, role: userRole.value });
+
+  // renegotiate to update remote with reverted track
+  await renegotiate();
 }
 
 // Recording
@@ -562,6 +735,8 @@ watch(
         if (localVideo.value) {
           localVideo.value.srcObject = localStream;
         }
+        // also populate the small side preview used during screen share
+        if (sideLocalVideo.value) sideLocalVideo.value.srcObject = localStream;
       } catch (err) {
         console.warn('Camera/mic access denied:', err);
       }
@@ -593,6 +768,7 @@ async function startClassroom(roomId, userName) {
     if (localVideo.value) {
       localVideo.value.srcObject = localStream;
     }
+    try { window.__localStream = localStream; } catch (e) { }
 
     // Attach local tracks
     localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
@@ -638,27 +814,35 @@ function registerSignalingHandlers() {
   socket.off('answer');
   socket.off('ice-candidate');
 
-  socket.on('offer', async ({ offer }) => {
-    if (userRole.value !== 'child') return;
+  // Offer: either peer may initiate (supports child-initiated renegotiate/screen-share)
+  socket.on('offer', async ({ offer, iceRestart }) => {
+    console.log('offer received (role-agnostic) iceRestart=', iceRestart);
 
     if (!pc) createPeerConnection();
 
     try {
       await pc.setRemoteDescription(offer);
 
+      // flush any queued ICE candidates received earlier
+      if (pendingCandidates.length) {
+        for (const c of pendingCandidates) {
+          try { await pc.addIceCandidate(c); } catch (e) { console.warn('addIceCandidate failed while flushing after offer:', e); }
+        }
+        pendingCandidates = [];
+      }
+
+      // create and send answer
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
-
       socket.emit('answer', { roomId, answer });
     } catch (err) {
       console.error('Error handling offer:', err);
     }
   });
 
-  // Tutor receives the answer and flushes queued ICE
+  // Answer: set remote description for the peer that initiated an offer
   socket.on('answer', async ({ answer }) => {
-    if (userRole.value !== 'tutor') return;
-
+    console.log('answer received');
     if (!pc) {
       console.warn('Answer received but pc missing; creating pc');
       createPeerConnection();
@@ -667,10 +851,13 @@ function registerSignalingHandlers() {
     try {
       await pc.setRemoteDescription(answer);
 
-      for (const c of pendingCandidates) {
-        await pc.addIceCandidate(c);
+      // flush any queued ICE candidates now that remote description is set
+      if (pendingCandidates.length) {
+        for (const c of pendingCandidates) {
+          try { await pc.addIceCandidate(c); } catch (e) { console.warn('addIceCandidate failed while flushing after answer:', e); }
+        }
+        pendingCandidates = [];
       }
-      pendingCandidates = [];
     } catch (err) {
       console.error('Error handling answer:', err);
     }
@@ -777,6 +964,21 @@ onMounted(async () => {
     // --- RAISE HAND ---
     socket.on('raise-hand', ({ userName: user, raised }) => {
       console.log(`${user} raised hand: ${raised}`);
+    });
+
+    // --- REMOTE SCREEN SHARE ---
+    socket.on('screen-share-start', ({ userName: owner, role }) => {
+      console.log('screen-share-start received for', owner, 'role=', role);
+      // remote should show full screen when someone shares
+      remoteScreenActive.value = true;
+      remoteScreenOwner.value = owner;
+      // remoteVideo.srcObject will be set in ontrack when the track arrives
+    });
+
+    socket.on('screen-share-stop', ({ userName: owner, role }) => {
+      console.log('screen-share-stop received for', owner, 'role=', role);
+      remoteScreenActive.value = false;
+      remoteScreenOwner.value = '';
     });
 
   } catch (err) {
@@ -935,6 +1137,82 @@ body {
   transform: translateY(-2px);
 }
 
+/* Remote screen overlay sits just under the navbar. Set --navbar-height on the page if your navbar
+   height differs from the default (72px). This makes the overlay share the same border line with
+   the navbar by aligning its top edge to the navbar bottom. */
+.remote-screen-full {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: var(--navbar-height, 72px);
+  height: calc(100vh - var(--navbar-height, 72px));
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: black;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.remote-screen-full video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
+.screen-label {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.6);
+  color: white;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.exit-fullscreen {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 30;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border: none;
+  font-size: 28px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+}
+
+.classroom.remote-active .right-pane,
+.classroom.remote-active .minimized-tabs {
+  display: none;
+}
+
+.remote-blank-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  color: white;
+  z-index: 50;
+}
+
+.remote-blank-overlay button {
+  margin-top: 12px;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  border: none;
+  background: #3b82f6;
+  color: white;
+}
+
 .video-label {
   position: absolute;
   top: 0.8rem;
@@ -960,6 +1238,40 @@ video {
 
 .videos.minimized video {
   height: 120px;
+}
+
+/* SIDE VIDEO STRIP - shown when remote screen is active */
+.side-videos {
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  z-index: 90;
+}
+
+.side-video-tile {
+  width: 180px;
+  height: 120px;
+  background: #000;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.side-video-tile video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Make small tiles slightly smaller than normal grid */
+.videos .video-tile video {
+  height: 200px;
 }
 
 /* WHITEBOARD */

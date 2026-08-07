@@ -368,6 +368,35 @@ io.on('connection', (socket) => {
     socket.to(roomId).emit('answer', { answer, from: socket.id });
   });
 
+  // Ensure chat messages are relayed to the room and logged
+  socket.on('chat-message', ({ roomId, message }) => {
+    if (!message) {
+      console.warn('chat-message received with no message payload');
+      return;
+    }
+    console.log('chat-message from', socket.data.userName || socket.id, 'to room', roomId);
+    socket.to(roomId).emit('chat-message', message);
+  });
+
+  // Ensure raise-hand is relayed and logged
+  socket.on('raise-hand', ({ roomId, userName, raised }) => {
+    console.log('raise-hand', userName, 'raised=', raised, 'in', roomId);
+    socket.to(roomId).emit('raise-hand', { userName, raised });
+  });
+
+  // Relay screen-share start/stop so clients can update UI (hide video grid / show full screen)
+  socket.on('screen-share-start', ({ roomId, userName }) => {
+    const role = socket.data.role || 'participant';
+    console.log('screen-share-start', userName, 'role=', role, 'in', roomId);
+    socket.to(roomId).emit('screen-share-start', { userName, role });
+  });
+
+  socket.on('screen-share-stop', ({ roomId, userName }) => {
+    const role = socket.data.role || 'participant';
+    console.log('screen-share-stop', userName, 'role=', role, 'in', roomId);
+    socket.to(roomId).emit('screen-share-stop', { userName, role });
+  });
+
   socket.on('ice-candidate', ({ roomId, candidate }) => {
     socket.to(roomId).emit('ice-candidate', { candidate, from: socket.id });
   });
